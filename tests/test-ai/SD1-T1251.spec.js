@@ -1,243 +1,216 @@
 const { test, expect } = require('@playwright/test');
 
-// --- Placeholders and Helper Functions (to be defined by reviewer) ---
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000'; // TODO: Replace with actual base URL
-const PATIENT_A_ID = 'patient-a-123'; // TODO: Replace with actual Patient A ID/identifier
-const PATIENT_B_ID = 'patient-b-456'; // TODO: Replace with actual Patient B ID/identifier
-const USERNAME = process.env.TEST_USERNAME || 'testuser'; // TODO: Replace with actual test username
-const PASSWORD = process.env.TEST_PASSWORD || 'testpassword'; // TODO: Replace with actual test password
+// --- Configuration and Helper Functions ---
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000'; // Placeholder for base URL
+const LOGIN_URL = `${BASE_URL}/login`; // Placeholder for login URL
+const PATIENT_A_ID = 'patient-a-123'; // Placeholder for Patient A's ID
+const PATIENT_B_ID = 'patient-b-456'; // Placeholder for Patient B's ID
 
-// Helper function for login
+// Helper function for login (assuming a simple form login)
 async function login(page, username, password) {
-    await page.goto(`${BASE_URL}/login`); // TODO: Adjust login URL
-    await page.getByLabel('Username').fill(username); // TODO_SELECTOR: Adjust locator if needed
-    await page.getByLabel('Password').fill(password); // TODO_SELECTOR: Adjust locator if needed
-    await page.getByRole('button', { name: 'Login' }).click(); // TODO_SELECTOR: Adjust locator if needed
-    await expect(page).toHaveURL(`${BASE_URL}/dashboard`); // TODO: Adjust post-login URL
+    await page.goto(LOGIN_URL);
+    await page.getByLabel('Username').fill(username); // Placeholder locator
+    await page.getByLabel('Password').fill(password); // Placeholder locator
+    await page.getByRole('button', { name: 'Login' }).click(); // Placeholder locator
+    await expect(page).toHaveURL(`${BASE_URL}/dashboard`); // Placeholder for post-login URL
 }
 
-// Helper function to navigate to patient medical history
+// Helper function to navigate to a patient's medical history
 async function navigateToPatientMedicalHistory(page, patientId) {
-    await page.goto(`${BASE_URL}/patients/${patientId}/medical-history`); // TODO: Adjust URL structure
-    await expect(page.getByRole('heading', { name: `Medical History for Patient ${patientId}` })).toBeVisible(); // TODO_SELECTOR: Adjust locator for page title
+    await page.goto(`${BASE_URL}/patients/${patientId}/medical-history`); // Placeholder URL structure
+    await expect(page.getByRole('heading', { name: `Medical History for Patient ${patientId}` })).toBeVisible(); // Placeholder heading
 }
 
-// Helper function to ensure patient data exists (e.g., via API or UI setup)
-// For this draft, we'll assume the patient record exists as a precondition.
-// In a real scenario, this might involve an API call or navigating to a patient creation form.
-async function ensurePatientExists(page, patientId) {
-    // This is a placeholder. In a real scenario, you might:
-    // 1. Make an API call to create the patient.
-    // 2. Navigate to a patient creation page and fill out a form.
-    console.log(`Precondition: Patient ${patientId} is assumed to exist.`);
-    // For the purpose of this script, we'll just proceed assuming it exists.
+// Helper function to simulate saving medical history data
+async function saveMedicalHistory(page) {
+    await page.getByRole('button', { name: 'Save' }).click();
 }
 
 // --- Test Cases ---
 
 test('TC-1: Successfully Save Valid Medical History Data', async ({ page }) => {
-    // Preconditions: User is logged into the system, A patient record (Patient A) exists, User has access to Patient A's record
-    await login(page, USERNAME, PASSWORD);
-    await ensurePatientExists(page, PATIENT_A_ID);
+    // Preconditions: User is logged in, Patient A exists, User has access
+    await login(page, 'testuser', 'password123'); // Placeholder credentials
     await navigateToPatientMedicalHistory(page, PATIENT_A_ID);
 
-    // Steps: Enter valid medical history data (e.g., Allergies: 'Pollen', Past Conditions: 'Asthma'). Click the 'Save' button.
-    await page.getByLabel('Allergies').fill('Pollen'); // TODO_SELECTOR: Adjust locator for Allergies field
-    await page.getByLabel('Past Conditions').fill('Asthma'); // TODO_SELECTOR: Adjust locator for Past Conditions field
-    await page.getByRole('button', { name: 'Save' }).click(); // TODO_SELECTOR: Adjust locator for Save button
+    // Steps:
+    // Enter valid medical history data
+    await page.getByRole('textbox', { name: 'Allergies' }).fill('Pollen'); // Placeholder locator
+    await page.getByRole('textbox', { name: 'Past Conditions' }).fill('Asthma'); // Placeholder locator
+    // Click the 'Save' button
+    await saveMedicalHistory(page);
 
     // Expected Result: The system successfully saves the medical history data for Patient A.
-    await expect(page.getByText('Medical history saved successfully.')).toBeVisible(); // TODO_SELECTOR: Adjust locator for success message
-    // Optionally, verify data persistence by re-navigating or checking a display element
-    await page.reload();
-    await expect(page.getByLabel('Allergies')).toHaveValue('Pollen');
-    await expect(page.getByLabel('Past Conditions')).toHaveValue('Asthma');
+    await expect(page.getByText('Medical history saved successfully.')).toBeVisible(); // Placeholder success message
+    await expect(page.getByRole('textbox', { name: 'Allergies' })).toHaveValue('Pollen');
+    await expect(page.getByRole('textbox', { name: 'Past Conditions' })).toHaveValue('Asthma');
 });
 
 test('TC-2: Verify No Error Message on Successful Save', async ({ page }) => {
-    // Preconditions: User is logged into the system, A patient record (Patient A) exists, User has access to Patient A's record
-    await login(page, USERNAME, PASSWORD);
-    await ensurePatientExists(page, PATIENT_A_ID);
+    // Preconditions: User is logged in, Patient A exists, User has access
+    await login(page, 'testuser', 'password123');
     await navigateToPatientMedicalHistory(page, PATIENT_A_ID);
 
-    // Steps: Enter valid medical history data (e.g., Medications: 'Ibuprofen 200mg'). Click the 'Save' button.
-    await page.getByLabel('Medications').fill('Ibuprofen 200mg'); // TODO_SELECTOR: Adjust locator for Medications field
-    await page.getByRole('button', { name: 'Save' }).click(); // TODO_SELECTOR: Adjust locator for Save button
+    // Steps:
+    // Enter valid medical history data
+    await page.getByRole('textbox', { name: 'Medications' }).fill('Ibuprofen 200mg'); // Placeholder locator
+    // Click the 'Save' button
+    await saveMedicalHistory(page);
 
     // Expected Result: No error message related to saving is displayed after the save operation.
-    await expect(page.getByText('Medical history saved successfully.')).toBeVisible(); // Assert success message
-    await expect(page.getByRole('alert', { name: 'Error' })).not.toBeVisible(); // TODO_SELECTOR: Adjust locator for generic error alert
-    await expect(page.getByText('Error saving data')).not.toBeVisible(); // TODO_SELECTOR: Adjust locator for specific error message
+    await expect(page.locator('.error-message')).not.toBeVisible(); // Placeholder error message locator
+    await expect(page.getByText('Medical history saved successfully.')).toBeVisible(); // Confirm success
 });
 
 test('TC-3: Verify Accuracy of Saved Medical History Data in Patient Record', async ({ page }) => {
-    // Preconditions: User is logged into the system, A patient record (Patient A) exists, User has access to Patient A's record, Medical history data (e.g., Family History: 'Diabetes') has been successfully saved for Patient A
-    await login(page, USERNAME, PASSWORD);
-    await ensurePatientExists(page, PATIENT_A_ID);
-
-    // Setup: Save initial data for verification
+    // Preconditions: User is logged in, Patient A exists, User has access, Medical history data has been successfully saved
+    await login(page, 'testuser', 'password123');
     await navigateToPatientMedicalHistory(page, PATIENT_A_ID);
-    await page.getByLabel('Family History').fill('Diabetes'); // TODO_SELECTOR: Adjust locator for Family History field
-    await page.getByRole('button', { name: 'Save' }).click();
+
+    // Setup: Ensure data is saved first for verification
+    await page.getByRole('textbox', { name: 'Family History' }).fill('Diabetes'); // Placeholder locator
+    await saveMedicalHistory(page);
     await expect(page.getByText('Medical history saved successfully.')).toBeVisible();
-    await page.waitForTimeout(500); // Small wait to ensure UI updates
+    await page.reload(); // Reload to ensure data is fetched fresh
 
-    // Steps: Navigate to Patient A's medical history section. Observe the displayed medical history data.
-    // (Already navigated and data is displayed)
-    await page.reload(); // Reload to ensure fresh data fetch
+    // Steps:
+    // Observe the displayed medical history data.
+    // (Navigation already done in setup)
 
-    // Expected Result: The displayed medical history data accurately reflects the data that was previously saved (e.g., 'Family History: Diabetes').
-    await expect(page.getByLabel('Family History')).toHaveValue('Diabetes'); // TODO_SELECTOR: Adjust locator for Family History field
+    // Expected Result: The displayed medical history data accurately reflects the data that was previously saved.
+    await expect(page.getByRole('textbox', { name: 'Family History' })).toHaveValue('Diabetes');
 });
 
 test('TC-4: Attempt to Save Medical History with Missing Required Fields', async ({ page }) => {
-    // Preconditions: User is logged into the system, A patient record (Patient A) exists, User has access to Patient A's record, 'Date of Diagnosis' is a mandatory field
-    await login(page, USERNAME, PASSWORD);
-    await ensurePatientExists(page, PATIENT_A_ID);
+    // Preconditions: User is logged in, Patient A exists, User has access, 'Date of Diagnosis' is mandatory
+    await login(page, 'testuser', 'password123');
     await navigateToPatientMedicalHistory(page, PATIENT_A_ID);
 
-    // Steps: Attempt to add a new 'Past Condition' (e.g., 'Hypertension'). Leave the mandatory 'Date of Diagnosis' field empty. Click the 'Save' button.
-    await page.getByLabel('Add Past Condition').click(); // TODO_SELECTOR: Adjust locator for 'Add Past Condition' button/link
-    await page.getByPlaceholder('Condition Name').fill('Hypertension'); // TODO_SELECTOR: Adjust locator for condition name input
-    // Intentionally leaving 'Date of Diagnosis' empty
-    await page.getByRole('button', { name: 'Save' }).click(); // TODO_SELECTOR: Adjust locator for Save button
+    // Steps:
+    // Attempt to add a new 'Past Condition'
+    await page.getByRole('button', { name: 'Add Past Condition' }).click(); // Placeholder locator for adding a new condition row/modal
+    await page.getByRole('textbox', { name: 'Condition Name' }).last().fill('Hypertension'); // Placeholder locator for condition name
+    // Leave the mandatory 'Date of Diagnosis' field empty.
+    // Click the 'Save' button.
+    await saveMedicalHistory(page);
 
     // Expected Result: The system displays an error message indicating that the mandatory field 'Date of Diagnosis' is missing and prevents the save.
-    await expect(page.getByText('Date of Diagnosis is required.')).toBeVisible(); // TODO_SELECTOR: Adjust locator for specific validation message
-    await expect(page.getByRole('alert', { name: 'Error' })).toBeVisible(); // TODO_SELECTOR: Adjust locator for generic error alert
-    // Verify data was NOT saved (e.g., by checking if the condition is still in an 'unsaved' state or not present after reload)
-    await page.reload();
-    await expect(page.getByPlaceholder('Condition Name')).not.toHaveValue('Hypertension'); // Assuming it clears or doesn't show unsaved data
+    await expect(page.getByText('Date of Diagnosis is required.')).toBeVisible(); // Placeholder error message
+    await expect(page.locator('.success-message')).not.toBeVisible(); // Ensure no success message
 });
 
 test('TC-5: Attempt to Save Medical History for Unauthorized Patient', async ({ page }) => {
-    // Preconditions: User is logged into the system, A patient record (Patient B) exists, User *does not* have access to Patient B's record
-    await login(page, USERNAME, PASSWORD);
-    await ensurePatientExists(page, PATIENT_B_ID); // Ensure Patient B exists for the attempt
+    // Preconditions: User is logged in, Patient B exists, User *does not* have access to Patient B
+    await login(page, 'testuser', 'password123');
 
-    // Steps: Attempt to navigate to Patient B's medical history section. If access is unexpectedly granted, attempt to enter and save medical history data.
-    await page.goto(`${BASE_URL}/patients/${PATIENT_B_ID}/medical-history`); // TODO: Adjust URL structure
+    // Steps:
+    // Attempt to navigate to Patient B's medical history section
+    await page.goto(`${BASE_URL}/patients/${PATIENT_B_ID}/medical-history`); // Direct URL attempt
 
     // Expected Result: The system prevents the user from accessing Patient B's record or, if access is somehow granted, prevents the saving of medical history data, displaying an authorization error.
-    // Option 1: Access is denied at navigation
-    const accessDeniedMessage = page.getByText('You do not have permission to access this patient record.'); // TODO_SELECTOR: Adjust locator for access denied message
-    const unauthorizedPageTitle = page.getByRole('heading', { name: 'Unauthorized Access' }); // TODO_SELECTOR: Adjust locator for unauthorized page title
-    const loginPageRedirect = page.url().includes('/login'); // Check if redirected to login
-
-    if (await accessDeniedMessage.isVisible() || await unauthorizedPageTitle.isVisible() || loginPageRedirect) {
-        await expect(true).toBeTruthy(); // Access was denied as expected
-    } else {
-        // Option 2: Access was unexpectedly granted, attempt to save and expect authorization error
-        console.warn('Warning: Access to unauthorized patient record was unexpectedly granted. Attempting to save to verify authorization error.');
-        await page.getByLabel('Notes').fill('Attempted unauthorized save.'); // TODO_SELECTOR: Adjust locator for Notes field
-        await page.getByRole('button', { name: 'Save' }).click(); // TODO_SELECTOR: Adjust locator for Save button
-        await expect(page.getByText('Authorization Error: You do not have permission to save data for this patient.')).toBeVisible(); // TODO_SELECTOR: Adjust locator for authorization error message
-    }
+    // We expect either a redirect, an error page, or an error message on the page.
+    await expect(page.getByText('Access Denied')).toBeVisible(); // Placeholder for access denied message
+    // If the page loads but saving is prevented, uncomment the following:
+    // await expect(page.getByRole('textbox', { name: 'Allergies' })).toBeDisabled(); // Example: fields are disabled
+    // await page.getByRole('textbox', { name: 'Allergies' }).fill('Attempted Allergy');
+    // await saveMedicalHistory(page);
+    // await expect(page.getByText('Authorization Error: Cannot save for this patient.')).toBeVisible();
 });
 
 test('TC-6: Attempt to Save Medical History with Extremely Long Text Input', async ({ page }) => {
-    // Preconditions: User is logged into the system, A patient record (Patient A) exists, User has access to Patient A's record, Assume a medical history free-text field (e.g., 'Notes') has a defined maximum character limit (e.g., 4000 characters)
-    await login(page, USERNAME, PASSWORD);
-    await ensurePatientExists(page, PATIENT_A_ID);
+    // Preconditions: User is logged in, Patient A exists, User has access, free-text field has max limit
+    await login(page, 'testuser', 'password123');
     await navigateToPatientMedicalHistory(page, PATIENT_A_ID);
 
-    // Steps: Enter medical history data, including a very long string (e.g., 5000 characters) into a free-text field like 'Notes'. Click the 'Save' button.
-    const longText = 'A'.repeat(5000); // 5000 characters
-    const expectedMaxLen = 4000; // TODO: Confirm actual max length if truncation is expected
-    await page.getByLabel('Notes').fill(longText); // TODO_SELECTOR: Adjust locator for Notes field
-    await page.getByRole('button', { name: 'Save' }).click(); // TODO_SELECTOR: Adjust locator for Save button
+    // Steps:
+    // Enter medical history data, including a very long string into a free-text field like 'Notes'.
+    const longText = 'a'.repeat(5000); // 5000 characters
+    await page.getByRole('textbox', { name: 'Notes' }).fill(longText); // Placeholder locator
+    // Click the 'Save' button.
+    await saveMedicalHistory(page);
 
-    // Expected Result: The system either truncates the input to the maximum allowed length and saves successfully, or displays an error message indicating the input exceeds the maximum allowed length and prevents the save. The system should not crash or become unresponsive.
-    const successMessage = page.getByText('Medical history saved successfully.');
-    const errorMessage = page.getByText('Input exceeds maximum allowed length.'); // TODO_SELECTOR: Adjust locator for max length error message
+    // Expected Result: The system either truncates the input to the maximum allowed length and saves successfully, or displays an error message.
+    // This assertion needs to check for either outcome.
+    const notesField = page.getByRole('textbox', { name: 'Notes' });
+    const savedText = await notesField.inputValue();
 
-    if (await successMessage.isVisible()) {
-        // Assuming truncation and successful save
-        await page.reload();
-        const savedNotes = await page.getByLabel('Notes').inputValue();
-        expect(savedNotes.length).toBeLessThanOrEqual(expectedMaxLen); // Verify truncation
-        expect(savedNotes).toContain(longText.substring(0, expectedMaxLen - 10)); // Check content (partial match)
-    } else if (await errorMessage.isVisible()) {
-        // Assuming error message and save prevented
-        await expect(errorMessage).toBeVisible();
-        await page.reload();
-        await expect(page.getByLabel('Notes')).not.toHaveValue(longText); // Verify data was not saved
+    if (savedText.length < longText.length) {
+        // Assuming truncation to 4000 characters based on precondition
+        await expect(notesField).toHaveValue(longText.substring(0, 4000)); // Placeholder max length
+        await expect(page.getByText('Medical history saved successfully.')).toBeVisible();
     } else {
-        // Fallback for unexpected behavior
-        await expect(successMessage.or(errorMessage)).toBeVisible(); // Expect either success or error
+        // Assuming an error message is displayed
+        await expect(page.getByText('Input exceeds maximum allowed length (4000 characters).')).toBeVisible(); // Placeholder error message
+        await expect(page.locator('.success-message')).not.toBeVisible();
     }
-    // Implicitly, the test will fail if the system crashes or becomes unresponsive (timeout)
 });
 
-test('TC-7: Concurrent Saves of Medical History by Multiple Users', async ({ page }) => {
-    // Preconditions: Two distinct users (User 1, User 2) are logged into the system simultaneously, A patient record (Patient A) exists, Both User 1 and User 2 have access to Patient A's record
-    // NOTE: True concurrent testing with two separate user sessions requires two browser contexts or separate test files.
-    // This test simulates sequential actions of two users within a single context, which might not fully expose race conditions.
-    // For a more robust test, consider using `test.use({ browserName: 'chromium' })` and creating two `page` instances or separate `test` blocks.
+test('TC-7: Concurrent Saves of Medical History by Multiple Users', async ({ browser }) => {
+    // Preconditions: Two distinct users, Patient A, both have access
+    // This test simulates concurrency using two separate browser contexts.
+    const user1Context = await browser.newContext();
+    const user2Context = await browser.newContext();
 
-    await login(page, USERNAME, PASSWORD); // User 1 logs in
-    await ensurePatientExists(page, PATIENT_A_ID);
-    await navigateToPatientMedicalHistory(page, PATIENT_A_ID);
+    const user1Page = await user1Context.newPage();
+    const user2Page = await user2Context.newPage();
 
-    // Simulate User 1 entering data
-    await page.getByLabel('Allergies').fill('Penicillin (User 1)'); // TODO_SELECTOR: Adjust locator for Allergies field
-    await page.getByLabel('Past Conditions').fill('Asthma (User 1)'); // TODO_SELECTOR: Adjust locator for Past Conditions field
+    // User 1 logs in and navigates
+    await login(user1Page, 'user1', 'password123'); // Placeholder credentials
+    await navigateToPatientMedicalHistory(user1Page, PATIENT_A_ID);
 
-    // Simulate User 2 entering data (in a separate context)
-    const page2 = await page.context().newPage();
-    await login(page2, USERNAME, PASSWORD); // Assuming same credentials for simplicity, or different USERNAME_2
-    await navigateToPatientMedicalHistory(page2, PATIENT_A_ID);
-    await page2.getByLabel('Medications').fill('Diabetes (User 2)'); // TODO_SELECTOR: Adjust locator for Medications field
-    await page2.getByLabel('Family History').fill('Heart Disease (User 2)'); // TODO_SELECTOR: Adjust locator for Family History field
+    // User 2 logs in and navigates
+    await login(user2Page, 'user2', 'password123'); // Placeholder credentials
+    await navigateToPatientMedicalHistory(user2Page, PATIENT_A_ID);
+
+    // Steps:
+    // User 1 enters new medical history data
+    await user1Page.getByRole('textbox', { name: 'Allergies' }).fill('Penicillin');
+    // User 2 enters different new medical history data
+    await user2Page.getByRole('textbox', { name: 'Past Conditions' }).fill('Diabetes');
 
     // User 1 clicks 'Save'
-    await page.getByRole('button', { name: 'Save' }).click();
-    await expect(page.getByText('Medical history saved successfully.')).toBeVisible();
-    await page.waitForTimeout(500); // Allow server to process
+    await saveMedicalHistory(user1Page);
+    await expect(user1Page.getByText('Medical history saved successfully.')).toBeVisible();
 
     // User 2 clicks 'Save' shortly after User 1
-    await page2.getByRole('button', { name: 'Save' }).click();
-    // Expected Result: Both sets of medical history data are saved correctly without data loss or corruption, or the system provides a clear conflict resolution mechanism.
-    const conflictMessage = page2.getByText('Data has been updated by another user, please refresh and re-enter.'); // TODO_SELECTOR: Adjust locator for conflict message
-    const successMessage2 = page2.getByText('Medical history saved successfully.');
+    await saveMedicalHistory(user2Page);
 
-    if (await conflictMessage.isVisible()) {
-        await expect(conflictMessage).toBeVisible();
-        // If conflict resolution is in place, verify the message and potentially guide the user to refresh.
-    } else {
-        // Assuming both saves are successful (last one wins or merge)
-        await expect(successMessage2).toBeVisible();
-        // Verify data after both saves
-        await page.reload(); // User 1's page reload
-        await page2.reload(); // User 2's page reload
+    // Expected Result: Both sets of medical history data are saved correctly without data loss or corruption,
+    // or the system provides a clear conflict resolution mechanism.
 
-        // Verify User 1's data (might be overwritten or merged)
-        // This assertion depends on the system's conflict resolution.
-        // For now, we'll assume a "last write wins" or merge strategy.
-        await expect(page.getByLabel('Allergies')).toHaveValue('Penicillin (User 1)'); // This might fail if User 2 overwrites
-        await expect(page.getByLabel('Past Conditions')).toHaveValue('Asthma (User 1)'); // This might fail if User 2 overwrites
+    // Option 1: Both saved successfully (optimistic locking/merge) - assuming the system handles this gracefully
+    await expect(user2Page.getByText('Medical history saved successfully.')).toBeVisible();
+    // Verify data for User 1's view (might need refresh)
+    await user1Page.reload();
+    await expect(user1Page.getByRole('textbox', { name: 'Allergies' })).toHaveValue('Penicillin');
+    await expect(user1Page.getByRole('textbox', { name: 'Past Conditions' })).toHaveValue('Diabetes'); // Expect User 2's data to be visible
 
-        // Verify User 2's data
-        await expect(page2.getByLabel('Medications')).toHaveValue('Diabetes (User 2)');
-        await expect(page2.getByLabel('Family History')).toHaveValue('Heart Disease (User 2)');
+    // Verify data for User 2's view
+    await user2Page.reload();
+    await expect(user2Page.getByRole('textbox', { name: 'Allergies' })).toHaveValue('Penicillin'); // Expect User 1's data to be visible
+    await expect(user2Page.getByRole('textbox', { name: 'Past Conditions' })).toHaveValue('Diabetes');
 
-        // If the system merges, both should be present. If last-write-wins, only User 2's changes might be visible on fields they touched.
-        // This part needs careful review based on actual system behavior.
-    }
-    await page2.close();
+    // Option 2: Conflict resolution (if the system provides a specific message) - uncomment and adjust if applicable
+    // await expect(user2Page.getByText('Data has been updated by another user, please refresh and re-enter.')).toBeVisible();
+    // If conflict, then User 2's save might fail, and User 1's data should be present.
+    // await user1Page.reload();
+    // await expect(user1Page.getByRole('textbox', { name: 'Allergies' })).toHaveValue('Penicillin');
+    // await expect(user1Page.getByRole('textbox', { name: 'Past Conditions' })).toHaveValue(''); // Or whatever was there before User 2's attempt
+
+    await user1Context.close();
+    await user2Context.close();
 });
 
 test('TC-8: Attempt to Save Medical History During Simulated Network/Server Error', async ({ page }) => {
-    // Preconditions: User is logged into the system, A patient record (Patient A) exists, User has access to Patient A's record, A mechanism is in place to simulate a temporary network outage or server error
-    await login(page, USERNAME, PASSWORD);
-    await ensurePatientExists(page, PATIENT_A_ID);
+    // Preconditions: User is logged in, Patient A exists, User has access, mechanism to simulate error
+    await login(page, 'testuser', 'password123');
     await navigateToPatientMedicalHistory(page, PATIENT_A_ID);
 
-    // Steps: Enter valid medical history data. Initiate the simulated network/server error. Click the 'Save' button.
-    await page.getByLabel('Notes').fill('Data to save during network error.'); // TODO_SELECTOR: Adjust locator for Notes field
-
-    // Simulate network error for the save API call
-    await page.route('**/api/patients/*/medical-history', async route => { // TODO: Adjust API endpoint for saving medical history
+    // Steps:
+    // Enter valid medical history data.
+    await page.getByRole('textbox', { name: 'Allergies' }).fill('Dust');
+    // Initiate the simulated network/server error.
+    await page.route('**/api/medical-history/*', async route => { // Placeholder API endpoint
         await route.fulfill({
             status: 500,
             contentType: 'application/json',
@@ -245,48 +218,40 @@ test('TC-8: Attempt to Save Medical History During Simulated Network/Server Erro
         });
     });
 
-    await page.getByRole('button', { name: 'Save' }).click(); // TODO_SELECTOR: Adjust locator for Save button
+    // Click the 'Save' button.
+    await saveMedicalHistory(page);
 
-    // Expected Result: The system displays an appropriate error message (e.g., 'Unable to connect to server', 'Save failed, please try again') and the data is not saved. The system should remain stable.
-    await expect(page.getByText('Unable to connect to server')).toBeVisible(); // TODO_SELECTOR: Adjust locator for network error message
-    await expect(page.getByText('Save failed, please try again')).toBeVisible(); // TODO_SELECTOR: Adjust locator for generic save failure message
-    await expect(page.getByRole('alert', { name: 'Error' })).toBeVisible(); // TODO_SELECTOR: Adjust locator for generic error alert
+    // Expected Result: The system displays an appropriate error message and the data is not saved.
+    await expect(page.getByText('Unable to connect to server. Please try again later.')).toBeVisible(); // Placeholder error message
+    await expect(page.locator('.success-message')).not.toBeVisible();
 
-    // Verify data was NOT saved
+    // Verify data was not saved (e.g., by reloading and checking the field value)
     await page.reload();
-    await expect(page.getByLabel('Notes')).not.toHaveValue('Data to save during network error.');
+    await expect(page.getByRole('textbox', { name: 'Allergies' })).not.toHaveValue('Dust'); // Assuming it reverts or is empty
 });
 
 test('TC-9: Attempt to Save Medical History with Malicious Input (SQL Injection)', async ({ page }) => {
-    // Preconditions: User is logged into the system, A patient record (Patient A) exists, User has access to Patient A's record
-    await login(page, USERNAME, PASSWORD);
-    await ensurePatientExists(page, PATIENT_A_ID);
+    // Preconditions: User is logged in, Patient A exists, User has access
+    await login(page, 'testuser', 'password123');
     await navigateToPatientMedicalHistory(page, PATIENT_A_ID);
 
-    // Steps: Enter malicious input (e.g., `' OR '1'='1`; DROP TABLE Users; --`) into a free-text medical history field (e.g., 'Notes'). Click the 'Save' button.
-    const maliciousInput = "' OR '1'='1`; DROP TABLE Users; --";
-    await page.getByLabel('Notes').fill(maliciousInput); // TODO_SELECTOR: Adjust locator for Notes field
-    await page.getByRole('button', { name: 'Save' }).click(); // TODO_SELECTOR: Adjust locator for Save button
+    // Steps:
+    // Enter malicious input into a free-text medical history field (e.g., 'Notes').
+    const maliciousInput = `' OR '1'='1; DROP TABLE Users; --`;
+    await page.getByRole('textbox', { name: 'Notes' }).fill(maliciousInput);
+    // Click the 'Save' button.
+    await saveMedicalHistory(page);
 
-    // Expected Result: The system sanitizes the input, saves the literal string, or rejects the input with an error, without executing any malicious code or causing data corruption/security breaches.
-    const successMessage = page.getByText('Medical history saved successfully.');
-    const errorMessage = page.getByText('Invalid input detected.'); // TODO_SELECTOR: Adjust locator for malicious input error message
+    // Expected Result: The system sanitizes the input, saves the literal string, or rejects the input with an error.
+    // It should not execute any malicious code or cause data corruption/security breaches.
+    const notesField = page.getByRole('textbox', { name: 'Notes' });
+    const savedValue = await notesField.inputValue();
 
-    if (await successMessage.isVisible()) {
-        // Assuming input was sanitized or saved literally
-        await page.reload();
-        const savedNotes = await page.getByLabel('Notes').inputValue();
-        // Verify it's saved as a literal string, not executed
-        expect(savedNotes).toContain(maliciousInput.replace(/`/g, '')); // Expect literal string, potentially with backticks removed by sanitizer
-        expect(savedNotes).not.toContain('DROP TABLE Users'); // Ensure command was not executed
-    } else if (await errorMessage.isVisible()) {
-        // Assuming input was rejected
-        await expect(errorMessage).toBeVisible();
-        await page.reload();
-        await expect(page.getByLabel('Notes')).not.toHaveValue(maliciousInput); // Verify data was not saved
-    } else {
-        // Fallback for unexpected behavior
-        await expect(successMessage.or(errorMessage)).toBeVisible(); // Expect either success or error
-    }
-    // Implicitly, the test will fail if the system crashes or becomes unresponsive (timeout)
+    // Option 1: Input is sanitized and saved as literal string (most common and secure outcome)
+    await expect(notesField).toHaveValue(maliciousInput); // Expect the literal string to be saved
+    await expect(page.getByText('Medical history saved successfully.')).toBeVisible();
+
+    // Option 2: Input is rejected with an specific error message (uncomment and adjust if applicable)
+    // await expect(page.getByText('Invalid characters detected in input.')).toBeVisible(); // Placeholder error message
+    // await expect(page.locator('.success-message')).not.toBeVisible();
 });
