@@ -245,7 +245,6 @@ test('TC-9: Attempt to Save Medical History with Malicious Input (SQL Injection)
     // Expected Result: The system sanitizes the input, saves the literal string, or rejects the input with an error.
     // It should not execute any malicious code or cause data corruption/security breaches.
     const notesField = page.getByRole('textbox', { name: 'Notes' });
-    const savedValue = await notesField.inputValue();
 
     // Option 1: Input is sanitized and saved as literal string (most common and secure outcome)
     await expect(notesField).toHaveValue(maliciousInput); // Expect the literal string to be saved

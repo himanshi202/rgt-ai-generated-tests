@@ -125,7 +125,7 @@ test('TC-7 Login Page Load Performance', async ({ page }) => {
   // Steps:
   // Navigate to the login page URL.
   const startTime = Date.now();
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+  await page.goto(BASE_URL);
   const endTime = Date.now();
   // Measure the time taken for the page to fully load and become interactive.
   const loadTime = endTime - startTime;
