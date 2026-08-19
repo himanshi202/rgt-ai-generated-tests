@@ -1,0 +1,130 @@
+name: Execute automation tests
+
+# Deliberately NOT `on: pull_request`/`on: schedule` directly -- n8n owns
+# triggering (RGT Pipeline - Automation PR Merge Handler after a merge,
+# RGT Pipeline - Automation Schedule Trigger for regression runs), calling
+# this workflow's `workflow_dispatch` endpoint scoped to one client at a
+# time. That's what lets each run get that ONE client's own BASE_URL/test
+# credentials without colliding with every other client's generic-named
+# env vars (every generated script uses ad-hoc names like ADMIN_LOGIN_URL/
+# VALID_ADMIN_USERNAME -- there's no per-client env-var namespacing in the
+# scripts themselves, so only one client's tests can safely run per job).
+on:
+  workflow_dispatch:
+    inputs:
+      client_id:
+        description: 'tests/<client_id> folder to execute, e.g. healthplex'
+        required: true
+        type: string
+      zoho_task_id:
+        description: 'Optional: run only this ticket''s spec file (e.g. HE1-T3630). Blank = whole client folder (regression).'
+        required: false
+        type: string
+      trigger_type:
+        description: 'pr_merge or schedule -- recorded on the execution row, not used for any branching logic here'
+        required: false
+        type: string
+        default: pr_merge
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    # Pinned to the exact @playwright/test version in package.json
+    # (^1.47.0) -- the image ships a matching browser build so Chromium
+    # doesn't need a separate `playwright install` step.
+    container:
+      image: mcr.microsoft.com/playwright:v1.47.0-jammy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record start time
+        id: start
+        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve secret name prefix
+        id: creds
+        run: |
+          # HEALTHPLEX, TEST_AI, TEST_JIRA, TEST_AZURE, ... -- GitHub secret
+          # names can't contain hyphens, so client_id's hyphens become
+          # underscores (test-ai -> TEST_AI).
+          PREFIX=$(echo "${{ inputs.client_id }}" | tr '[:lower:]-' '[:upper:]_')
+          echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+
+      - name: Determine test target
+        id: target
+        run: |
+          if [ -n "${{ inputs.zoho_task_id }}" ]; then
+            echo "path=tests/${{ inputs.client_id }}/${{ inputs.zoho_task_id }}.spec.js" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=tests/${{ inputs.client_id }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Every generated script was written independently by the Dify
+      # agent with whatever env var names it happened to pick for that
+      # ticket (confirmed against real merged scripts: ADMIN_LOGIN_URL,
+      # BASE_URL, VALID_ADMIN_USERNAME, VALID_USERNAME, ... are all seen
+      # across different files) -- there's no single canonical name yet.
+      # Setting every observed variant to the same underlying secret
+      # covers today's already-merged scripts; the Automation Script
+      # Agent's prompt should standardize on ONE set of names for future
+      # scripts (tracked as a follow-up, not done as part of this phase).
+      - name: Run Playwright tests
+        id: run_tests
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ secrets[format('{0}_BASE_URL', steps.creds.outputs.prefix)] }}
+          ADMIN_LOGIN_URL: ${{ secrets[format('{0}_BASE_URL', steps.creds.outputs.prefix)] }}
+          ADMIN_DASHBOARD_URL: ${{ secrets[format('{0}_BASE_URL', steps.creds.outputs.prefix)] }}
+          VALID_USERNAME: ${{ secrets[format('{0}_TEST_USERNAME', steps.creds.outputs.prefix)] }}
+          VALID_PASSWORD: ${{ secrets[format('{0}_TEST_PASSWORD', steps.creds.outputs.prefix)] }}
+          VALID_ADMIN_USERNAME: ${{ secrets[format('{0}_TEST_USERNAME', steps.creds.outputs.prefix)] }}
+          VALID_ADMIN_PASSWORD: ${{ secrets[format('{0}_TEST_PASSWORD', steps.creds.outputs.prefix)] }}
+        run: |
+          npx playwright test "${{ steps.target.outputs.path }}" --reporter=json,html > raw-results.json || true
+
+      - name: Build structured result payload
+        if: always()
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          INPUT_CLIENT_ID: ${{ inputs.client_id }}
+          INPUT_TRIGGER_TYPE: ${{ inputs.trigger_type }}
+          JOB_STARTED_AT: ${{ steps.start.outputs.started_at }}
+        run: node .github/scripts/build-result-payload.js
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Upload structured results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-json-${{ github.run_id }}
+          path: results.json
+          retention-days: 30
+
+      # GitHub's own `workflow_run` webhook event (subscribed separately,
+      # see rgt-ai-test-pilot-workflow's automation-webhook-proxy config)
+      # fires on completion regardless, and is kept as an audit/status
+      # cross-check -- but its payload has no access to this job's OWN
+      # results.json (that's an artifact, zip-wrapped, and n8n's Code
+      # nodes can't unzip -- no arbitrary npm in that sandbox). Posting
+      # the small JSON body directly is simpler and more reliable than
+      # teaching n8n to fetch+unzip a GitHub Actions artifact.
+      - name: Send result to n8n
+        if: always()
+        run: |
+          curl -sf -X POST "${{ secrets.N8N_EXECUTION_RESULT_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            --data-binary @results.json \
+          || echo "::warning::Failed to POST results to n8n -- results.json is still uploaded as a build artifact and can be reprocessed manually."
