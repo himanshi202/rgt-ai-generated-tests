@@ -19,13 +19,56 @@ tests/<client_id>/<ticket-key>.spec.js   one file per approved test case
    scripts retrieved from this repo's history.
 3. It opens a PR here with the draft.
 4. This repo's `lint.yml` Action runs ESLint on the changed file(s) as a
-   required check — syntax/lint only, scripts are never executed in CI.
+   required check — syntax/lint only, nothing is executed at PR time.
 5. The CODEOWNERS-assigned reviewer for that client folder reviews and
    either merges or pushes fixup commits directly on the PR branch.
 6. On merge, `RGT Pipeline - Automation PR Merge Handler` (n8n) marks the
    originating test case "Automated," comments back on the original ticket,
-   and feeds the merged script back into the knowledge base used for future
-   generations.
+   feeds the merged script back into the knowledge base used for future
+   generations, and (Phase 4, see below) triggers a real execution run for
+   that one ticket's script.
+
+## Automated execution (Phase 4)
+
+`execute-tests.yml` runs merged scripts for real, in Docker
+(`mcr.microsoft.com/playwright`, Chromium headless only). It is
+**`workflow_dispatch`-only** -- it does not trigger on `pull_request` or a
+built-in `schedule`, because a single Playwright run only knows one set of
+generic-named env vars (every script's `ADMIN_LOGIN_URL`/
+`VALID_ADMIN_USERNAME`-style names are ad-hoc per ticket, not
+client-namespaced), so at most one client's folder can safely run per job.
+`RGT Pipeline - Automation PR Merge Handler` and `RGT Pipeline - Automation
+Schedule Trigger` (both in `rgt-ai-test-pilot-workflow`, the n8n side) own
+triggering instead, dispatching one run per client with that client's own
+credentials.
+
+**Required one-time setup per client with execution enabled** -- GitHub
+Actions repo secrets (Settings -> Secrets and variables -> Actions), named
+`<CLIENT_ID_UPPERCASE>_BASE_URL` / `_TEST_USERNAME` / `_TEST_PASSWORD` (e.g.
+`HEALTHPLEX_BASE_URL`, `HEALTHPLEX_TEST_USERNAME`, `HEALTHPLEX_TEST_PASSWORD`;
+hyphens in the client id become underscores, e.g. `test-ai` ->
+`TEST_AI_BASE_URL`). Set via:
+```
+gh secret set HEALTHPLEX_BASE_URL --repo himanshi202/rgt-ai-generated-tests
+gh secret set HEALTHPLEX_TEST_USERNAME --repo himanshi202/rgt-ai-generated-tests
+gh secret set HEALTHPLEX_TEST_PASSWORD --repo himanshi202/rgt-ai-generated-tests
+```
+Manual and per-client by design: GitHub-hosted runners can't reach
+`client-secrets-proxy` (internal-only, NetworkPolicy-scoped to n8n's own
+pods), so these can't be synced automatically from AWS Secrets Manager the
+way n8n's own Zoho/Jira/Azure secrets are. Also requires
+`N8N_EXECUTION_RESULT_WEBHOOK_URL` (one value, not per-client) pointing at
+the current ngrok tunnel + scoped path for
+`RGT Pipeline - Automation Execution Result Handler` -- see that project's
+`automation-webhook-proxy` notes for why this one changes on every ngrok
+restart.
+
+Results (pass/fail/infrastructure-failure per test, HTML report, screenshots
+and traces on failure) are uploaded as build artifacts *and* posted directly
+to n8n as structured JSON (`.github/scripts/build-result-payload.js` --
+GitHub's own `workflow_run` webhook event is also subscribed as an
+audit/status cross-check, but isn't the data source, since its payload
+can't carry this job's own results.json).
 
 ## Local setup
 
