@@ -29,11 +29,6 @@ on:
 jobs:
   execute:
     runs-on: ubuntu-latest
-    # Pinned to the exact @playwright/test version in package.json
-    # (^1.47.0) -- the image ships a matching browser build so Chromium
-    # doesn't need a separate `playwright install` step.
-    container:
-      image: mcr.microsoft.com/playwright:v1.47.0-jammy
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +38,23 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # Originally used a version-pinned mcr.microsoft.com/playwright
+      # container instead of this step, on the assumption its bundled
+      # browser build would always match package.json's declared
+      # @playwright/test version. Confirmed live 2026-08-19 that this
+      # silently breaks the moment the lockfile drifts ahead of the pinned
+      # image tag (package.json's ^1.47.0 resolved to 1.62.1 in
+      # package-lock.json by the time this first real run executed, so
+      # every test failed with "browserType.launch: Executable doesn't
+      # exist" against the image's older bundled Chromium) -- every run
+      # before this fix landed was failing at the browser level, not on
+      # real test assertions. Installing the matching browser explicitly,
+      # keyed off whatever version npm ci actually resolved, removes that
+      # coupling entirely instead of requiring the image tag to be bumped
+      # in lockstep with every dependency update.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
 
       - name: Resolve secret name prefix
         id: creds
