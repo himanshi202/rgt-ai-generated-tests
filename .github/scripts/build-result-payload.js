@@ -24,10 +24,17 @@ function walkSuites(suites, out) {
     for (const spec of suite.specs || []) {
       for (const test of spec.tests || []) {
         const lastResult = (test.results || [])[test.results.length - 1] || {};
-        // Playwright's own JSON already gives file paths relative to the
-        // repo root, e.g. "tests/healthplex/HE1-T3630.spec.js" -- this
-        // repo's generation convention is tests/<client_id>/<zoho_task_id>.spec.js.
-        const scriptPath = spec.file;
+        // Playwright's JSON reporter gives spec.file relative to
+        // playwright.config.js's testDir ('./tests'), NOT the repo root --
+        // confirmed live 2026-08-19 (a real dispatch produced
+        // "test-jira/RT-2.spec.js", not "tests/test-jira/RT-2.spec.js",
+        // which silently failed this regex and shipped every result with a
+        // null client_id/zoho_task_id). Re-prefix with "tests/" so the
+        // stored script path matches this repo's documented
+        // tests/<client_id>/<zoho_task_id>.spec.js convention everywhere
+        // else (qa_pipeline_tasks.script_file_path, this repo's own folder
+        // layout), then parse against that normalized form.
+        const scriptPath = `tests/${spec.file}`;
         const match = /^tests\/([^/]+)\/([^/]+)\.spec\.js$/.exec(scriptPath);
         out.push({
           test_case_id: spec.title,
