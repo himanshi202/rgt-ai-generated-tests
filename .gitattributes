@@ -1,0 +1,5 @@
+# Windows core.autocrlf=true silently corrupts shell scripts' shebang lines
+# (#!/usr/bin/env bash\r fails inside a real shell) -- force LF regardless of
+# the checking-out machine's line-ending settings. Same fix already applied
+# in the main rgt-ai-test-pilot-workflow repo for the same reason.
+*.sh text eol=lf

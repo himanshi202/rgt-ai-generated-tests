@@ -4,3 +4,10 @@ test-results/
 .env
 raw-results.json
 results.json
+
+# Per-client execution credentials (real values) -- never committed.
+# secrets/example.env is the tracked template; everything else here is a
+# real client's file, pushed to GitHub Secrets via
+# scripts/push-client-secrets.sh, never stored in git.
+secrets/*.env
+!secrets/example.env
