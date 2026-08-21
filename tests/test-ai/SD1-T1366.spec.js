@@ -18,9 +18,9 @@ const VALID_PASSWORD = process.env.VALID_PASSWORD || 'password123';
  */
 async function login(page, username, password) {
   await page.goto(LOGIN_URL);
-  await page.getByLabel('Username').fill(username);
+  await page.getByLabel('Email Address').fill(username);
   await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Login' }).click();
+  await page.getByRole('button', { name: 'Sign In' }).click();
   await expect(page).toHaveURL(DASHBOARD_URL);
 }
 
@@ -62,9 +62,9 @@ async function selectGoAndGitHubActions(page) {
 test('TC-1: Verify Authenticated User Can Successfully Log In', async ({ page }) => {
   // Preconditions: User has valid credentials for the system
   await page.goto(LOGIN_URL);
-  await page.getByLabel('Username').fill(VALID_USERNAME);
+  await page.getByLabel('Email Address').fill(VALID_USERNAME);
   await page.getByLabel('Password').fill(VALID_PASSWORD);
-  await page.getByRole('button', { name: 'Login' }).click();
+  await page.getByRole('button', { name: 'Sign In' }).click();
 
   // Expected result: User is successfully logged in and redirected to the main dashboard or home page.
   await expect(page).toHaveURL(DASHBOARD_URL);
