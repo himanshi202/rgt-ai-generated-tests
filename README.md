@@ -47,7 +47,24 @@ Actions repo secrets (Settings -> Secrets and variables -> Actions), named
 `<CLIENT_ID_UPPERCASE>_BASE_URL` / `_TEST_USERNAME` / `_TEST_PASSWORD` (e.g.
 `HEALTHPLEX_BASE_URL`, `HEALTHPLEX_TEST_USERNAME`, `HEALTHPLEX_TEST_PASSWORD`;
 hyphens in the client id become underscores, e.g. `test-ai` ->
-`TEST_AI_BASE_URL`). Set via:
+`TEST_AI_BASE_URL`).
+
+The real values themselves are never committed to this repo -- only pushed
+into GitHub's own encrypted secret store. The convenient way to manage them:
+
+```
+cp tests/<client_id>/.env.example tests/<client_id>/.env   # e.g. tests/test-ai/.env
+# edit tests/<client_id>/.env with the real BASE_URL/TEST_USERNAME/TEST_PASSWORD
+scripts/push-client-secrets.sh <client_id>
+```
+
+`tests/<client_id>/.env` is gitignored (only `tests/<client_id>/.env.example`,
+the template, is tracked) -- editing that file and re-running the script is
+the whole update flow for rotating a client's test credentials. Kept
+alongside that client's own spec files rather than in a separate top-level
+folder. Equivalent to,
+but easier to keep straight across multiple clients than, calling `gh secret
+set` three times by hand:
 ```
 gh secret set HEALTHPLEX_BASE_URL --repo himanshi202/rgt-ai-generated-tests
 gh secret set HEALTHPLEX_TEST_USERNAME --repo himanshi202/rgt-ai-generated-tests
