@@ -1,60 +1,110 @@
 const { test, expect } = require('@playwright/test');
 
 // --- Configuration and Helper Functions ---
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000'; // Placeholder for base URL
-const LOGIN_URL = `${BASE_URL}/login`; // Placeholder for login URL
-const DASHBOARD_URL = `${BASE_URL}/dashboard`; // Placeholder for post-login URL
-const TEMPLATES_URL = `${BASE_URL}/templates`; // Placeholder for templates section URL
+//
+// Every selector/URL/flow below was verified live against the real
+// dev.ratnatest.ai staging app (not guessed) before this rewrite -- the
+// originally generated script's assumptions (native <select> dropdowns for
+// language/provider, a dedicated Repository URL/Branch/Build Command/Test
+// Command form, a "Dashboard" heading at /dashboard, a "Login" heading on
+// unauthenticated redirect) do not match the real app at all and were the
+// reason every test failed. See PR discussion for the live verification
+// trail (screenshots + accessibility snapshots via a one-off inspection
+// script).
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const LOGIN_URL = `${BASE_URL}/login`;
+// Real post-login landing page is the marketing homepage at the root --
+// there is no separate /dashboard route.
+const HOME_URL = `${BASE_URL}/`;
+const TEMPLATES_URL = `${BASE_URL}/cicd-pipeline-testing/templates`;
 
-// Placeholder credentials for valid user
 const VALID_USERNAME = process.env.VALID_USERNAME || 'user@example.com';
 const VALID_PASSWORD = process.env.VALID_PASSWORD || 'password123';
 
 /**
- * Helper function for login (assuming a simple form login)
+ * Real login flow: the email/password fields have no associated <label> at
+ * all (confirmed via accessibility snapshot) -- their accessible name comes
+ * from their placeholder text, not a label, so getByLabel() can never find
+ * them. The submit button's real text is "Sign In" (not "Login").
  * @param {import('@playwright/test').Page} page
  * @param {string} username
  * @param {string} password
  */
 async function login(page, username, password) {
   await page.goto(LOGIN_URL);
-  await page.getByLabel('Email Address').fill(username);
-  await page.getByLabel('Password').fill(password);
+  await page.getByPlaceholder('Enter your email').fill(username);
+  await page.getByPlaceholder('Enter your password').fill(password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page).toHaveURL(DASHBOARD_URL);
+  await expect(page).toHaveURL(HOME_URL);
+  // The account menu (shows "Change Password"/"Sign Out" when opened) is
+  // the real, confirmed signal of an authenticated session -- there is no
+  // "Dashboard" heading on this page, it's the same marketing homepage
+  // shown to logged-out visitors, just with this menu added.
+  await expect(page.getByRole('button', { name: /ratna demo/i })).toBeVisible();
 }
 
 /**
- * Helper function to navigate to the Templates section after login
+ * Navigates directly to the real Templates page
+ * (BASE_URL/cicd-pipeline-testing/templates, reached in the real app via
+ * top nav "Infrastructure" -> "CI/CD Pipeline" -> left sidebar "Templates").
  * @param {import('@playwright/test').Page} page
  */
 async function navigateToTemplates(page) {
-  await page.getByRole('link', { name: 'Templates' }).click();
+  await page.goto(TEMPLATES_URL);
   await expect(page).toHaveURL(TEMPLATES_URL);
-  await expect(page.getByRole('heading', { name: 'CI/CD Template Generation' })).toBeVisible();
+  // .first() -- confirmed live that once at least one template has been
+  // generated, a second element with this same accessible name appears
+  // (an empty-state/row-level action alongside the primary header
+  // button), which would otherwise make this a strict-mode violation on
+  // any repeat run in the same session.
+  await expect(page.getByRole('button', { name: 'Generate Template' }).first()).toBeVisible();
 }
 
 /**
- * Helper function to open the template generation wizard
+ * Opens the real 4-step "Generate CI/CD Template" wizard modal
+ * (Language -> Provider -> Configure -> Preview). Confirmed via a real
+ * generation run that this heading and step name are real, not assumed.
  * @param {import('@playwright/test').Page} page
  */
 async function openTemplateGenerationWizard(page) {
-  await page.getByRole('button', { name: 'Generate Template' }).click();
-  await expect(page.getByRole('heading', { name: 'New CI/CD Template' })).toBeVisible(); // Assuming wizard has a title
+  await page.getByRole('button', { name: 'Generate Template' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Generate CI/CD Template' })).toBeVisible();
+  // NOTE: the step-name labels ("Language"/"Provider"/"Configure") are NOT
+  // used as visibility assertions anywhere in this file -- confirmed live
+  // that "Language" text is ambiguous (it also matches a hidden background
+  // table column header on the Templates page underneath the modal),
+  // causing a strict-mode violation. Real, unambiguous option-card buttons
+  // are used instead throughout.
+  await expect(page.getByRole('button', { name: 'Go', exact: true })).toBeVisible();
 }
 
 /**
- * Helper function to select Go language and GitHub Actions provider
+ * Real language/provider selection: both steps use clickable option cards,
+ * not <select> dropdowns. Provider cards have a two-line label (name +
+ * config file path), so a prefix match is used for "GitHub Actions".
  * @param {import('@playwright/test').Page} page
  */
 async function selectGoAndGitHubActions(page) {
-  // Select 'Go' as programming language
-  await page.getByLabel('Programming Language').selectOption('Go');
-  await expect(page.getByLabel('Programming Language')).toHaveValue('Go');
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^GitHub Actions/ })).toBeVisible();
 
-  // Select 'GitHub Actions' as CI/CD provider
-  await page.getByLabel('CI/CD Provider').selectOption('GitHub Actions');
-  await expect(page.getByLabel('CI/CD Provider')).toHaveValue('GitHub Actions');
+  await page.getByRole('button', { name: /^GitHub Actions/ }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeVisible();
+}
+
+/**
+ * Submits the Configure step (real fields: an Environment dropdown and
+ * Build/Test/Deployment/Docker/notification toggles -- no free-text
+ * Repository URL/Branch/Build Command/Test Command fields exist in the
+ * real app) using its defaults, and waits for the real async "AI is
+ * generating your CI/CD files..." step to finish.
+ * @param {import('@playwright/test').Page} page
+ */
+async function generateWithDefaults(page) {
+  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  await page.getByText(/AI is generating/i).waitFor({ state: 'detached', timeout: 30000 });
 }
 
 // --- Test Cases ---
@@ -62,34 +112,41 @@ async function selectGoAndGitHubActions(page) {
 test('TC-1: Verify Authenticated User Can Successfully Log In', async ({ page }) => {
   // Preconditions: User has valid credentials for the system
   await page.goto(LOGIN_URL);
-  await page.getByLabel('Email Address').fill(VALID_USERNAME);
-  await page.getByLabel('Password').fill(VALID_PASSWORD);
+  await page.getByPlaceholder('Enter your email').fill(VALID_USERNAME);
+  await page.getByPlaceholder('Enter your password').fill(VALID_PASSWORD);
   await page.getByRole('button', { name: 'Sign In' }).click();
 
-  // Expected result: User is successfully logged in and redirected to the main dashboard or home page.
-  await expect(page).toHaveURL(DASHBOARD_URL);
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible(); // Assuming a dashboard heading
+  // Expected result: user is logged in and lands on the real post-login
+  // page (the homepage, not a /dashboard route), with the account menu
+  // present as proof of an authenticated session.
+  await expect(page).toHaveURL(HOME_URL);
+  await expect(page.getByRole('button', { name: /ratna demo/i })).toBeVisible();
 });
 
 test('TC-2: Verify Unauthenticated User Cannot Access Templates Functionality', async ({ page }) => {
   // Preconditions: User is not logged in
   await page.goto(TEMPLATES_URL);
 
-  // Expected result: System redirects to the login page or displays an 'Access Denied' error message
-  await expect(page).toHaveURL(LOGIN_URL); // Assuming redirection to login
-  await expect(page.getByRole('heading', { name: 'Login' })).toBeVisible();
+  // Expected result: confirmed live -- the real app redirects an
+  // unauthenticated visit to the Templates page back to the public
+  // homepage (not a /login page with a "Login" heading), and the account
+  // menu is absent since there is no session.
+  await expect(page).toHaveURL(HOME_URL);
+  await expect(page.getByRole('button', { name: /ratna demo/i })).not.toBeVisible();
 });
 
 test('TC-3: Verify Authenticated User Can Navigate to \'Templates\' Section', async ({ page }) => {
   // Preconditions: User is successfully logged in (as per TC-1)
   await login(page, VALID_USERNAME, VALID_PASSWORD);
 
-  // Steps: Locate and click on the 'Templates' link or menu item in the navigation.
+  // Steps: Navigate to the real CI/CD Pipeline Testing -> Templates area.
   await navigateToTemplates(page);
 
-  // Expected result: User is successfully navigated to the 'Templates' section
+  // Expected result: user reaches the Templates page ("Generate Template"
+  // is the real, confirmed control there -- "Templates" itself is styled
+  // text, not an accessible heading, so it isn't used as the assertion).
   await expect(page).toHaveURL(TEMPLATES_URL);
-  await expect(page.getByRole('heading', { name: 'CI/CD Template Generation' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Generate Template' }).first()).toBeVisible();
 });
 
 test('TC-4: Verify Authenticated User Can Initiate Template Generation Process', async ({ page }) => {
@@ -97,12 +154,13 @@ test('TC-4: Verify Authenticated User Can Initiate Template Generation Process',
   await login(page, VALID_USERNAME, VALID_PASSWORD);
   await navigateToTemplates(page);
 
-  // Steps: Click the 'Generate Template' button or equivalent action to start the wizard.
+  // Steps: Click 'Generate Template' to start the wizard.
   await openTemplateGenerationWizard(page);
 
-  // Expected result: The CI/CD template generation wizard opens, presenting initial options.
-  await expect(page.getByRole('heading', { name: 'New CI/CD Template' })).toBeVisible();
-  await expect(page.getByLabel('Programming Language')).toBeVisible();
+  // Expected result: the real 4-step wizard opens on its first step,
+  // "Language", presenting the language option cards.
+  await expect(page.getByRole('heading', { name: 'Generate CI/CD Template' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Go', exact: true })).toBeVisible();
 });
 
 test('TC-5: Verify Template Generation Wizard Allows Selection of \'Go\' Language', async ({ page }) => {
@@ -111,13 +169,15 @@ test('TC-5: Verify Template Generation Wizard Allows Selection of \'Go\' Languag
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
 
-  // Steps: In the wizard, locate the programming language selection. Select 'Go' from the available options.
-  await page.getByLabel('Programming Language').selectOption('Go');
+  // Steps: select 'Go' (a clickable option card, not a <select>) and
+  // advance -- there is no separate "Go Version" field in the real wizard.
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
 
-  // Expected result: 'Go' is successfully selected, and the wizard proceeds to present options relevant to Go applications.
-  await expect(page.getByLabel('Programming Language')).toHaveValue('Go');
-  // Assuming that selecting 'Go' might reveal Go-specific options, e.g., a 'Go Version' field
-  await expect(page.getByLabel('Go Version', { exact: true })).toBeVisible(); // Placeholder for Go-specific option
+  // Expected result: the wizard accepts the selection and advances to the
+  // real next step, "Provider" -- shown here by the provider option cards
+  // (e.g. "GitHub Actions") becoming visible.
+  await expect(page.getByRole('button', { name: /^GitHub Actions/ })).toBeVisible();
 });
 
 test('TC-6: Verify Template Generation Wizard Allows Selection of a Supported CI/CD Provider', async ({ page }) => {
@@ -125,202 +185,236 @@ test('TC-6: Verify Template Generation Wizard Allows Selection of a Supported CI
   await login(page, VALID_USERNAME, VALID_PASSWORD);
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
-  await page.getByLabel('Programming Language').selectOption('Go');
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
 
-  // Steps: In the wizard, locate the CI/CD provider selection. Select 'GitHub Actions' (assumed supported provider) from the available options.
-  await page.getByLabel('CI/CD Provider').selectOption('GitHub Actions');
+  // Steps: select 'GitHub Actions' (its real card label is two lines:
+  // "GitHub Actions" + ".github/workflows/*.yml") and advance.
+  await page.getByRole('button', { name: /^GitHub Actions/ }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
 
-  // Expected result: 'GitHub Actions' is successfully selected, and the wizard proceeds to present configuration options specific to Go and GitHub Actions.
-  await expect(page.getByLabel('CI/CD Provider')).toHaveValue('GitHub Actions');
-  // Assuming that selecting 'GitHub Actions' reveals provider-specific fields, e.g., 'Repository URL'
-  await expect(page.getByLabel('Repository URL')).toBeVisible();
+  // Expected result: the wizard advances to the real "Configure" step --
+  // there is no separate "Repository URL" field in the real wizard, but
+  // the real "Generate" button becomes visible.
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeVisible();
 });
 
 test('TC-7: Verify Template Generation Wizard Presents Necessary Configuration Options for Go and Selected Provider', async ({ page }) => {
-  // Preconditions: 'Go' is selected and 'GitHub Actions' is selected in the wizard (as per TC-6)
+  // Preconditions: 'Go' and 'GitHub Actions' are selected (as per TC-6)
   await login(page, VALID_USERNAME, VALID_PASSWORD);
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
   await selectGoAndGitHubActions(page);
 
-  // Steps: Observe the configuration options presented in the wizard.
-  // Expected result: Configuration options such as 'Repository URL', 'Branch', 'Build Command', and 'Test Command' are visible and editable.
-  await expect(page.getByLabel('Repository URL')).toBeVisible();
-  await expect(page.getByLabel('Branch')).toBeVisible();
-  await expect(page.getByLabel('Build Command')).toBeVisible();
-  await expect(page.getByLabel('Test Command')).toBeVisible();
-  await expect(page.getByLabel('Go Version', { exact: true })).toBeVisible(); // From TC-5
+  // Expected result: the real Configure step's controls are visible --
+  // an Environment selector and Pipeline/Infrastructure toggles (Build
+  // pipeline, Test pipeline, Deployment pipeline), not the assumed
+  // Repository URL/Branch/Build Command/Test Command fields.
+  //
+  // NOTE: the section labels ("Environment"/"Pipelines"/"Infrastructure")
+  // are NOT used here as plain getByText() checks -- confirmed live that
+  // each one collides with an unrelated same-named element elsewhere on
+  // the page (a background "past templates" table column header for
+  // "Environment", and the left sidebar's own "Pipelines" nav button),
+  // causing a strict-mode violation. The real toggle switches are
+  // role=button elements with their own unambiguous accessible names, so
+  // those are asserted on directly instead.
+  await expect(page.locator('label').filter({ hasText: 'Environment' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Build pipeline', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Test pipeline', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Deployment pipeline', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeVisible();
 });
 
 test('TC-8: Verify Successful Generation of CI/CD Pipeline Template After Completing Configuration', async ({ page }) => {
-  // Preconditions: All required configuration options for Go and GitHub Actions are completed in the wizard
+  // Preconditions: All required wizard steps are completed
   await login(page, VALID_USERNAME, VALID_PASSWORD);
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
   await selectGoAndGitHubActions(page);
 
-  // Fill in mandatory fields
-  await page.getByLabel('Repository URL').fill('https://github.com/my-org/my-go-app');
-  await page.getByLabel('Branch').fill('main');
-  await page.getByLabel('Build Command').fill('go build ./...');
-  await page.getByLabel('Test Command').fill('go test ./...');
-  await page.getByLabel('Go Version', { exact: true }).selectOption('1.20'); // Assuming a default or selectable version
+  // Steps: submit the Configure step with its defaults (there are no
+  // mandatory free-text fields to fill in the real wizard).
+  await generateWithDefaults(page);
 
-  // Steps: Click the 'Generate' or 'Submit' button in the wizard.
-  await page.getByRole('button', { name: 'Generate', exact: true }).click();
-
-  // Expected result: System processes the request and indicates successful template generation, typically by displaying a preview or download option.
-  await expect(page.getByText('Template generated successfully!')).toBeVisible(); // Assuming a success message
-  await expect(page.getByRole('button', { name: 'Preview' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Download' })).toBeVisible();
+  // Expected result: confirmed live -- the real success state shows the
+  // generated file's tab/name and Copy/Save/Download controls. There is
+  // no "Template generated successfully!" message or separate
+  // "Preview"/"Download" buttons in the real app.
+  await expect(page.getByRole('button', { name: '.github/workflows/ci.yml' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download file' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download all' })).toBeVisible();
 });
 
 test('TC-9: Verify Generated Go Pipeline Template is Syntactically Valid for Selected Provider', async ({ page }) => {
   // Preconditions: A Go pipeline template has been successfully generated (as per TC-8)
-  // This test case requires generating a template first.
   await login(page, VALID_USERNAME, VALID_PASSWORD);
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
   await selectGoAndGitHubActions(page);
-  await page.getByLabel('Repository URL').fill('https://github.com/my-org/my-go-app-valid');
-  await page.getByLabel('Branch').fill('main');
-  await page.getByLabel('Build Command').fill('go build ./...');
-  await page.getByLabel('Test Command').fill('go test ./...');
-  await page.getByLabel('Go Version', { exact: true }).selectOption('1.20');
-  await page.getByRole('button', { name: 'Generate', exact: true }).click();
-  await expect(page.getByText('Template generated successfully!')).toBeVisible();
+  await generateWithDefaults(page);
 
-  // Steps: Preview or download the generated template file. Apply a GitHub Actions YAML linter or schema validator tool to the downloaded template content.
-  // Playwright can download the file, but cannot directly apply an external linter.
+  // Steps: download the generated file (real button is "Download file",
+  // not "Download") and parse it as YAML -- Playwright can't run an
+  // external GitHub Actions schema validator, but js-yaml parsing without
+  // throwing is a real, meaningful syntax check.
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Download' }).click()
+    page.getByRole('button', { name: 'Download file' }).click(),
   ]);
   const path = await download.path();
-  expect(path).toBeTruthy(); // Ensure file was downloaded
+  expect(path).toBeTruthy();
 
-  // Expected result: The linter/validator reports no syntactic errors, confirming the template is valid for GitHub Actions YAML format.
-  // This assertion is a placeholder for external validation. We can only assert the download functionality.
-  // The actual validation would happen outside Playwright or by reading the file content and performing basic checks.
+  const fs = require('fs');
+  const content = fs.readFileSync(path, 'utf8');
+  // Structural sanity checks confirmed against a real generated file (see
+  // PR discussion for the full real content captured live): a top-level
+  // name, an "on:" trigger block, and a "jobs:" block, each starting at
+  // column 0 the way valid top-level YAML keys must.
+  expect(content).toMatch(/^name:\s*.+/m);
+  expect(content).toMatch(/^on:\s*$/m);
+  expect(content).toMatch(/^jobs:\s*$/m);
+  // No line should be indented with tabs, which YAML disallows.
+  expect(content).not.toMatch(/^\t/m);
 });
 
 test('TC-10: Verify Generated Go Pipeline Template Contains Expected CI/CD Steps', async ({ page }) => {
   // Preconditions: A Go pipeline template has been successfully generated (as per TC-8)
-  // This test case requires generating a template first.
   await login(page, VALID_USERNAME, VALID_PASSWORD);
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
   await selectGoAndGitHubActions(page);
-  await page.getByLabel('Repository URL').fill('https://github.com/my-org/my-go-app-steps');
-  await page.getByLabel('Branch').fill('main');
-  await page.getByLabel('Build Command').fill('go build ./...');
-  await page.getByLabel('Test Command').fill('go test ./...');
-  await page.getByLabel('Go Version', { exact: true }).selectOption('1.20');
-  await page.getByRole('button', { name: 'Generate', exact: true }).click();
-  await expect(page.getByText('Template generated successfully!')).toBeVisible();
+  await generateWithDefaults(page);
 
-  // Steps: Preview or download the generated template file. Inspect the template content to confirm the presence of CI/CD steps for building (`go build`), testing (`go test`), and formatting (`go fmt`) a Go application.
-  await page.getByRole('button', { name: 'Preview' }).click(); // Assuming preview opens a modal or new page with content
-  const previewContent = await page.locator('pre').textContent(); // Assuming content is in a <pre> tag
+  // Steps: download and inspect the generated file's real content.
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download file' }).click(),
+  ]);
+  const path = await download.path();
+  const fs = require('fs');
+  const content = fs.readFileSync(path, 'utf8');
 
-  // Expected result: The template contains explicit steps for `go build`, `go test`, and `go fmt`
-  expect(previewContent).toContain('name: Build');
-  expect(previewContent).toContain('run: go build ./...');
-  expect(previewContent).toContain('name: Test');
-  expect(previewContent).toContain('run: go test ./...');
-  expect(previewContent).toContain('name: Format'); // Assuming a formatting step is included
-  expect(previewContent).toContain('run: go fmt ./...');
+  // Expected result: confirmed live -- the real generated workflow
+  // contains explicit build and test steps for Go (via
+  // actions/setup-go@v5, `go build`, and `go test`). There is no separate
+  // "go fmt" formatting step in the real output, unlike the original
+  // assumption.
+  expect(content).toContain('actions/setup-go@v5');
+  expect(content).toContain('name: Build');
+  expect(content).toContain('go build');
+  expect(content).toMatch(/name:\s*Run tests/i);
+  expect(content).toContain('go test');
 });
 
 test('TC-11: Verify Generated Template is Available for Preview or Download', async ({ page }) => {
   // Preconditions: A Go pipeline template has been successfully generated (as per TC-8)
-  // This test case requires generating a template first.
   await login(page, VALID_USERNAME, VALID_PASSWORD);
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
   await selectGoAndGitHubActions(page);
-  await page.getByLabel('Repository URL').fill('https://github.com/my-org/my-go-app-available');
-  await page.getByLabel('Branch').fill('main');
-  await page.getByLabel('Build Command').fill('go build ./...');
-  await page.getByLabel('Test Command').fill('go test ./...');
-  await page.getByLabel('Go Version', { exact: true }).selectOption('1.20');
-  await page.getByRole('button', { name: 'Generate', exact: true }).click();
-  await expect(page.getByText('Template generated successfully!')).toBeVisible();
+  await generateWithDefaults(page);
 
-  // Steps: Locate the generated template in the UI after generation.
-  // Expected result: Options to 'Preview' and 'Download' the generated template are clearly visible and functional.
-  await expect(page.getByRole('button', { name: 'Preview' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Download' })).toBeVisible();
+  // Expected result: the generated content is already shown inline (no
+  // separate "Preview" step needed), and real Copy/Save/Download controls
+  // are present and functional.
+  await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download file' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download all' })).toBeVisible();
 });
 
 test('TC-12: Verify Generated Template is Usable as a CI/CD Pipeline Configuration', async ({ page }) => {
   // Preconditions: A Go pipeline template has been successfully generated and downloaded (as per TC-11)
-  // This test case involves external systems (GitHub, Git operations) that Playwright cannot directly automate.
-  // We will simulate the generation and download, and note the external verification.
+  // Actually pushing the file to a real GitHub repo and watching a real
+  // Actions run is outside what Playwright can automate against the UI --
+  // same limitation as the original test, kept honest rather than faked.
   await login(page, VALID_USERNAME, VALID_PASSWORD);
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
   await selectGoAndGitHubActions(page);
-  await page.getByLabel('Repository URL').fill('https://github.com/my-org/my-go-app-usable');
-  await page.getByLabel('Branch').fill('main');
-  await page.getByLabel('Build Command').fill('go build ./...');
-  await page.getByLabel('Test Command').fill('go test ./...');
-  await page.getByLabel('Go Version', { exact: true }).selectOption('1.20');
-  await page.getByRole('button', { name: 'Generate', exact: true }).click();
-  await expect(page.getByText('Template generated successfully!')).toBeVisible();
+  await generateWithDefaults(page);
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Download' }).click()
+    page.getByRole('button', { name: 'Download file' }).click(),
   ]);
   const path = await download.path();
-  expect(path).toBeTruthy(); // Assert download occurred
-
-  // Expected result: A GitHub Actions workflow run is triggered by the push, and the pipeline executes without immediate configuration errors, successfully performing the defined build/test steps.
-  // This part of the test requires manual verification or integration with GitHub APIs/webhooks, which is beyond the scope of a Playwright UI script.
-  // The Playwright script can only confirm the template was generated and downloadable.
+  expect(path).toBeTruthy();
+  // Suggested filename is real, confirmed live: github_workflows_ci.yml
+  // (the real file is written to .github/workflows/ci.yml in a repo).
+  expect(download.suggestedFilename()).toBe('github_workflows_ci.yml');
 });
 
-test('TC-13: Attempt Template Generation with Missing Mandatory Configuration Field', async ({ page }) => {
-  // Preconditions: 'Go' is selected and 'GitHub Actions' is selected in the wizard (as per TC-6)
+test('TC-13: Verify Wizard Completes Generation Using Defaults Without Explicit Selections', async ({ page }) => {
+  // Confirmed live: this replaces the originally assumed "missing
+  // mandatory field" scenario. The real Configure step has no required
+  // free-text fields to leave blank, and clicking through the wizard
+  // without explicitly selecting a language/provider does not block
+  // generation or show a validation error -- the wizard defaults to the
+  // first language/provider card instead of rejecting the empty
+  // selection. This test verifies that real, confirmed graceful-default
+  // behavior rather than asserting an error message that doesn't exist.
   await login(page, VALID_USERNAME, VALID_PASSWORD);
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
-  await selectGoAndGitHubActions(page);
 
-  // Steps: Fill in all mandatory configuration fields except one (e.g., leave 'Repository URL' empty).
-  // await page.getByLabel('Repository URL').fill(''); // Intentionally left empty
-  await page.getByLabel('Branch').fill('main');
-  await page.getByLabel('Build Command').fill('go build ./...');
-  await page.getByLabel('Test Command').fill('go test ./...');
-  await page.getByLabel('Go Version', { exact: true }).selectOption('1.20');
+  // Advance through Language and Provider steps with no explicit click.
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeVisible();
 
-  // Click the 'Generate' or 'Submit' button.
-  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  await generateWithDefaults(page);
 
-  // Expected result: System displays a validation error message indicating the missing mandatory field, and template generation is prevented.
-  await expect(page.getByText('Repository URL is required.')).toBeVisible(); // Assuming a specific error message
-  await expect(page.getByText('Template generated successfully!')).not.toBeVisible();
+  // Expected result: generation still completes successfully with a
+  // default file produced, rather than failing or erroring.
+  await expect(page.getByRole('button', { name: 'Download file' })).toBeVisible();
 });
 
-test('TC-14: Attempt Template Generation with Invalid Configuration Input', async ({ page }) => {
-  // Preconditions: 'Go' is selected and 'GitHub Actions' is selected in the wizard (as per TC-6)
+test('TC-14: Verify Repeated Generation Runs Remain Structurally Consistent', async ({ page }) => {
+  // Confirmed live: there is no free-text input field in the real wizard
+  // to feed an invalid/malformed value into, so the originally assumed
+  // "invalid Repository URL" scenario has no real equivalent to test.
+  // Replaced with a real, meaningful check instead: running the Go +
+  // GitHub Actions generation twice in the same session.
+  //
+  // NOTE: an earlier version of this test asserted the two runs produce
+  // byte-for-byte identical output. Confirmed live that's wrong -- this
+  // is an AI-generated file ("AI is generating your CI/CD files..."),
+  // and two real runs came back with the same structure but slightly
+  // different comment wording (e.g. "Specify the Go version to use" vs
+  // "Specify a stable Go version"). So this checks structural
+  // consistency (the same real steps present) instead of exact equality.
   await login(page, VALID_USERNAME, VALID_PASSWORD);
+  await navigateToTemplates(page);
+
+  const fs = require('fs');
+  function assertRealStructure(content) {
+    expect(content).toMatch(/^name:\s*.+/m);
+    expect(content).toContain('actions/checkout@v4');
+    expect(content).toContain('actions/setup-go@v5');
+    expect(content).toContain('go build');
+    expect(content).toContain('go test');
+  }
+
+  await openTemplateGenerationWizard(page);
+  await selectGoAndGitHubActions(page);
+  await generateWithDefaults(page);
+  const [firstDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download file' }).click(),
+  ]);
+  const firstContent = fs.readFileSync(await firstDownload.path(), 'utf8');
+  assertRealStructure(firstContent);
+
   await navigateToTemplates(page);
   await openTemplateGenerationWizard(page);
   await selectGoAndGitHubActions(page);
-
-  // Steps: Enter an invalid value for a configuration field (e.g., a malformed URL for 'Repository URL').
-  await page.getByLabel('Repository URL').fill('invalid-url'); // Malformed URL
-  await page.getByLabel('Branch').fill('main');
-  await page.getByLabel('Build Command').fill('go build ./...');
-  await page.getByLabel('Test Command').fill('go test ./...');
-  await page.getByLabel('Go Version', { exact: true }).selectOption('1.20');
-
-  // Fill in all other mandatory fields with valid data. Click the 'Generate' or 'Submit' button.
-  await page.getByRole('button', { name: 'Generate', exact: true }).click();
-
-  // Expected result: System displays a validation error message for the invalid input, and template generation is prevented.
-  await expect(page.getByText('Please enter a valid URL for Repository URL.')).toBeVisible(); // Assuming a specific error message
-  await expect(page.getByText('Template generated successfully!')).not.toBeVisible();
+  await generateWithDefaults(page);
+  const [secondDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download file' }).click(),
+  ]);
+  const secondContent = fs.readFileSync(await secondDownload.path(), 'utf8');
+  assertRealStructure(secondContent);
 });
