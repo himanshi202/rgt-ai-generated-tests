@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pushes one client's execution credentials from a local, gitignored
-# secrets/<client_id>.env file into this repo's GitHub Actions secrets.
+# tests/<client_id>/.env file into this repo's GitHub Actions secrets.
 #
 # Real values never touch git -- this script is the only bridge between the
 # local file (your convenient, easy-to-edit copy) and GitHub's encrypted
@@ -12,10 +12,16 @@ set -euo pipefail
 
 REPO="himanshi202/rgt-ai-generated-tests"
 CLIENT_ID="${1:?Usage: scripts/push-client-secrets.sh <client_id>}"
-ENV_FILE="secrets/${CLIENT_ID}.env"
+CLIENT_DIR="tests/${CLIENT_ID}"
+ENV_FILE="${CLIENT_DIR}/.env"
+
+if [ ! -d "$CLIENT_DIR" ]; then
+  echo "No such client folder: $CLIENT_DIR -- check the client_id spelling against tests/*/." >&2
+  exit 1
+fi
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo "Missing $ENV_FILE -- copy secrets/example.env to $ENV_FILE and fill in real values first." >&2
+  echo "Missing $ENV_FILE -- copy ${CLIENT_DIR}/.env.example to $ENV_FILE and fill in real values first." >&2
   exit 1
 fi
 

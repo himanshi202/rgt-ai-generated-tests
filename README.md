@@ -53,14 +53,16 @@ The real values themselves are never committed to this repo -- only pushed
 into GitHub's own encrypted secret store. The convenient way to manage them:
 
 ```
-cp secrets/example.env secrets/<client_id>.env   # e.g. secrets/test-ai.env
-# edit secrets/<client_id>.env with the real BASE_URL/TEST_USERNAME/TEST_PASSWORD
+cp tests/<client_id>/.env.example tests/<client_id>/.env   # e.g. tests/test-ai/.env
+# edit tests/<client_id>/.env with the real BASE_URL/TEST_USERNAME/TEST_PASSWORD
 scripts/push-client-secrets.sh <client_id>
 ```
 
-`secrets/<client_id>.env` is gitignored (only `secrets/example.env`, the
-template, is tracked) -- editing that file and re-running the script is the
-whole update flow for rotating a client's test credentials. Equivalent to,
+`tests/<client_id>/.env` is gitignored (only `tests/<client_id>/.env.example`,
+the template, is tracked) -- editing that file and re-running the script is
+the whole update flow for rotating a client's test credentials. Kept
+alongside that client's own spec files rather than in a separate top-level
+folder. Equivalent to,
 but easier to keep straight across multiple clients than, calling `gh secret
 set` three times by hand:
 ```
