@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "test": "playwright test",
+    "test:unit": "node --test .github/scripts/lib/*.test.js",
     "lint": "eslint tests --ext .js"
   },
   "devDependencies": {

@@ -25,6 +25,16 @@ on:
         required: false
         type: string
         default: pr_merge
+      self_healing_enabled:
+        description: 'Sourced from client_config.self_healing_enabled by n8n -- off (false/blank) leaves this run byte-for-byte identical to before self-healing existed.'
+        required: false
+        type: string
+        default: 'false'
+      self_healing_max_attempts:
+        description: 'Sourced from client_config.self_healing_max_attempts -- caps how many diagnose-fix-rerun cycles self-heal-runner.js will attempt per failing script file.'
+        required: false
+        type: string
+        default: '2'
 
 jobs:
   execute:
@@ -83,7 +93,14 @@ jobs:
       # covers today's already-merged scripts; the Automation Script
       # Agent's prompt should standardize on ONE set of names for future
       # scripts (tracked as a follow-up, not done as part of this phase).
-      - name: Run Playwright tests
+      #
+      # Phase 5 (self-healing): this step used to be a single
+      # `npx playwright test ... > raw-results.json || true` line. It's now
+      # self-heal-runner.js, which runs that exact same command FIRST and
+      # behaves identically to the old line whenever self_healing_enabled
+      # is false/blank (the default for every client unless explicitly
+      # opted in via client_config) -- see that script's own header comment.
+      - name: Run Playwright tests (with self-healing)
         id: run_tests
         continue-on-error: true
         env:
@@ -94,8 +111,13 @@ jobs:
           VALID_PASSWORD: ${{ secrets[format('{0}_TEST_PASSWORD', steps.creds.outputs.prefix)] }}
           VALID_ADMIN_USERNAME: ${{ secrets[format('{0}_TEST_USERNAME', steps.creds.outputs.prefix)] }}
           VALID_ADMIN_PASSWORD: ${{ secrets[format('{0}_TEST_PASSWORD', steps.creds.outputs.prefix)] }}
-        run: |
-          npx playwright test "${{ steps.target.outputs.path }}" --reporter=json,html > raw-results.json || true
+          INPUT_CLIENT_ID: ${{ inputs.client_id }}
+          TEST_TARGET_PATH: ${{ steps.target.outputs.path }}
+          SELF_HEALING_ENABLED: ${{ inputs.self_healing_enabled }}
+          SELF_HEALING_MAX_ATTEMPTS: ${{ inputs.self_healing_max_attempts }}
+          HEALING_KB_LOOKUP_URL: ${{ secrets.HEALING_KB_LOOKUP_WEBHOOK_URL }}
+          HEALING_ANALYZE_URL: ${{ secrets.HEALING_ANALYZE_WEBHOOK_URL }}
+        run: node .github/scripts/self-heal-runner.js
 
       - name: Build structured result payload
         if: always()
@@ -124,6 +146,15 @@ jobs:
           name: results-json-${{ github.run_id }}
           path: results.json
           retention-days: 30
+
+      - name: Upload healing report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: healing-report-${{ github.run_id }}
+          path: healing-report.json
+          retention-days: 30
+          if-no-files-found: ignore
 
       # GitHub's own `workflow_run` webhook event (subscribed separately,
       # see rgt-ai-test-pilot-workflow's automation-webhook-proxy config)

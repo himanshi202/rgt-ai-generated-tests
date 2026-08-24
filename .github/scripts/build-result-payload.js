@@ -1,68 +1,56 @@
-// Flattens Playwright's JSON reporter output (nested suites/specs/tests)
-// into the simple {tests: [...]} shape n8n's Automation Execution Result
-// Handler expects, and adds the GitHub run metadata that only this job
-// itself knows (Playwright's own JSON has no concept of a GitHub Actions
-// run id). Written as a plain script (not a config change) so it works
-// the same locally as in CI, and so playwright.config.js doesn't need a
-// custom reporter.
+// Builds the final results.json posted to n8n's Automation Execution
+// Result Handler webhook. Two sources feed in:
+//  - raw-results.json: Playwright's own JSON reporter output (always).
+//  - healing-report.json: written by self-heal.js ONLY when self-healing
+//    was actually attempted for this run (client opted in AND at least one
+//    test failed) -- absent entirely for every other run, so this script's
+//    behavior/output is byte-for-byte unchanged for any run that never
+//    touches self-healing. See self-heal.js for that report's shape.
 const fs = require('fs');
+const { parseResultsFile } = require('./lib/playwright-results');
 
 const RAW_RESULTS_PATH = process.env.RAW_RESULTS_PATH || 'raw-results.json';
 const OUT_PATH = process.env.OUT_PATH || 'results.json';
+const HEALING_REPORT_PATH = process.env.HEALING_REPORT_PATH || 'healing-report.json';
 
-// Playwright's own statuses are passed/failed/timedOut/skipped/interrupted;
-// normalize to this project's DB CHECK constraint values up front so n8n
-// doesn't need to know Playwright's naming at all.
-function normalizeStatus(s) {
-  if (s === 'timedOut') return 'timed_out';
-  if (s === 'passed' || s === 'failed' || s === 'skipped') return s;
-  return 'failed'; // 'interrupted' or anything unexpected -- fail loud, not silently skip
-}
+const { tests, parsedOk } = parseResultsFile(RAW_RESULTS_PATH);
 
-function walkSuites(suites, out) {
-  for (const suite of suites || []) {
-    for (const spec of suite.specs || []) {
-      for (const test of spec.tests || []) {
-        const lastResult = (test.results || [])[test.results.length - 1] || {};
-        // Playwright's JSON reporter gives spec.file relative to
-        // playwright.config.js's testDir ('./tests'), NOT the repo root --
-        // confirmed live 2026-08-19 (a real dispatch produced
-        // "test-jira/RT-2.spec.js", not "tests/test-jira/RT-2.spec.js",
-        // which silently failed this regex and shipped every result with a
-        // null client_id/zoho_task_id). Re-prefix with "tests/" so the
-        // stored script path matches this repo's documented
-        // tests/<client_id>/<zoho_task_id>.spec.js convention everywhere
-        // else (qa_pipeline_tasks.script_file_path, this repo's own folder
-        // layout), then parse against that normalized form.
-        const scriptPath = `tests/${spec.file}`;
-        const match = /^tests\/([^/]+)\/([^/]+)\.spec\.js$/.exec(scriptPath);
-        out.push({
-          test_case_id: spec.title,
-          script: scriptPath,
-          client_id: match ? match[1] : null,
-          zoho_task_id: match ? match[2] : null,
-          status: normalizeStatus(lastResult.status || test.status),
-          duration_ms: lastResult.duration || 0,
-          error: lastResult.error ? (lastResult.error.message || String(lastResult.error)) : null,
-          stack: lastResult.error ? (lastResult.error.stack || null) : null,
-        });
-      }
+let healingByTestCase = new Map();
+if (fs.existsSync(HEALING_REPORT_PATH)) {
+  try {
+    const report = JSON.parse(fs.readFileSync(HEALING_REPORT_PATH, 'utf8'));
+    // Covers BOTH outcomes -- a test that healed successfully AND one that
+    // was attempted but is still failing after MAX_SELF_HEAL_ATTEMPTS.
+    // Section 5 of the self-healing spec: an unresolved test must still be
+    // marked failed with all its diagnostics preserved, not silently
+    // dropped just because healing was attempted.
+    for (const entry of report.attempted_test_cases || []) {
+      healingByTestCase.set(entry.test_case_id, entry);
     }
-    if (suite.suites && suite.suites.length) walkSuites(suite.suites, out);
+  } catch (e) {
+    console.warn(`::warning::Could not parse ${HEALING_REPORT_PATH}: ${e.message}`);
   }
 }
 
-let raw = null;
-try {
-  raw = JSON.parse(fs.readFileSync(RAW_RESULTS_PATH, 'utf8'));
-} catch (e) {
-  // The test step produced no JSON at all -- browser launch failure,
-  // dependency failure, etc. This IS the infrastructure-failure case the
-  // spec calls out; still emit a valid payload rather than losing the run.
+for (const t of tests) {
+  const healing = healingByTestCase.get(t.test_case_id);
+  delete t._attachments; // internal-only, not part of the n8n contract
+  if (!healing) continue;
+  t.healing = healing.healing;
+  if (healing.healing.final_outcome === 'healed') {
+    // Passed on its final re-run -- reflect that as the test's real,
+    // current status (self_healed carries the "used to fail" signal
+    // separately via t.healing) rather than reporting a status that's no
+    // longer true of the code as it stands after healing.
+    t.status = 'passed';
+    t.error = null;
+    t.stack = null;
+  }
+  // still_failing / max_attempts_reached: leave status/error/stack exactly
+  // as Playwright's own final re-run already reported them -- the
+  // diagnostics from every healing attempt are preserved separately in
+  // t.healing.attempts, not in place of the real failure info.
 }
-
-const tests = [];
-if (raw) walkSuites(raw.suites, tests);
 
 const summary = {
   total: tests.length,
@@ -71,7 +59,7 @@ const summary = {
   skipped: tests.filter((t) => t.status === 'skipped').length,
 };
 
-const status = !raw
+const status = !parsedOk
   ? 'infrastructure_failure'
   : summary.failed > 0
     ? (summary.passed > 0 ? 'partial' : 'failed')
@@ -92,4 +80,5 @@ const payload = {
 };
 
 fs.writeFileSync(OUT_PATH, JSON.stringify(payload, null, 2));
-console.log(`Wrote ${OUT_PATH}: ${summary.total} tests (${summary.passed} passed, ${summary.failed} failed, ${summary.skipped} skipped), status=${status}`);
+const healedCount = [...healingByTestCase.values()].filter((h) => h.healing.final_outcome === 'healed').length;
+console.log(`Wrote ${OUT_PATH}: ${summary.total} tests (${summary.passed} passed, ${summary.failed} failed, ${summary.skipped} skipped), status=${status}${healingByTestCase.size ? `, ${healedCount}/${healingByTestCase.size} self-healed` : ''}`);
