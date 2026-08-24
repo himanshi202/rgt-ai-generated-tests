@@ -53,19 +53,51 @@ function findAttachment(attachments, predicate) {
   return (attachments || []).find(predicate);
 }
 
-function readPageSnapshotFromAttachments(attachments) {
+// Playwright's error-context.md attachment (auto-generated on failure when
+// tracing/screenshots are on) is the single richest diagnostic source
+// available here -- confirmed live against the real SD1-T1366 incident.
+// Critically, its "# Error details" section carries the detailed
+// "Call log: - waiting for X" text, and "# Test source" shows the ACTUAL
+// failing line of code (marked with a leading `>`) -- Playwright's own
+// top-level result.error.message is often just "Test timeout of 30000ms
+// exceeded" with none of that, which (confirmed live) leads an AI analysis
+// to hallucinate a plausible-sounding but WRONG original_locator that
+// doesn't match what the file actually contains, since it never saw the
+// real code. Parsed once per failing test and reused for both the page
+// snapshot and the enriched error/failed-step text sent to the AI.
+function readErrorContextMd(attachments) {
   const md = findAttachment(
     attachments,
     (a) => /error.?context/i.test(a.name || '') || a.contentType === 'text/markdown',
   );
-  if (!md || !md.path || !fs.existsSync(md.path)) return '';
+  if (!md || !md.path || !fs.existsSync(md.path)) return null;
   try {
-    const content = fs.readFileSync(md.path, 'utf8');
-    const match = /```yaml\n([\s\S]*?)\n```/.exec(content);
-    return match ? match[1] : content.slice(0, 4000);
+    return fs.readFileSync(md.path, 'utf8');
   } catch (e) {
-    return '';
+    return null;
   }
+}
+
+function extractPageSnapshot(mdContent) {
+  if (!mdContent) return '';
+  const match = /```yaml\n([\s\S]*?)\n```/.exec(mdContent);
+  return match ? match[1] : mdContent.slice(0, 4000);
+}
+
+function extractErrorDetails(mdContent) {
+  if (!mdContent) return '';
+  const match = /# Error details\n\n([\s\S]*?)\n\n# /.exec(mdContent);
+  return match ? match[1].replace(/```/g, '').trim() : '';
+}
+
+// The exact failing line(s) of REAL source code, e.g.:
+//   "> 21 |   await page.getByLabel('Username').fill(username);"
+// This is what actually grounds a proposed original_locator in reality
+// instead of a screenshot-only guess.
+function extractFailingSourceLine(mdContent) {
+  if (!mdContent) return '';
+  const lines = (mdContent.match(/^>\s*\d+\s*\|.*$/gm) || []).map((l) => l.replace(/^>\s*\d+\s*\|\s?/, ''));
+  return lines.join('\n');
 }
 
 function readScreenshotBase64FromAttachments(attachments) {
@@ -120,16 +152,36 @@ async function main() {
 
   const attemptedTestCases = [];
 
-  for (const [scriptPath, scriptFailures] of failuresByScript) {
-    log(`[HEAL] ${scriptPath}: capturing diagnostics for ${scriptFailures.length} failing test(s)`);
-    const initialFailures = scriptFailures.map((t) => ({
+  // Enriches a raw parsed-Playwright-result failure with the error-context
+  // attachment's richer detail (real Call log + the ACTUAL failing source
+  // line) -- applied both to the first run's failures AND to every
+  // subsequent re-run's results inside io.runTests() below, so a 2nd/3rd
+  // healing attempt's representative test is exactly as well-grounded as
+  // the first (confirmed live this matters: Playwright's own top-level
+  // result.error.message is often just "Test timeout of 30000ms exceeded"
+  // with none of this detail, which led a real AI analysis to hallucinate
+  // a plausible-but-wrong original_locator that didn't match the file).
+  function enrichFailure(t) {
+    const md = readErrorContextMd(t._attachments);
+    const errorDetails = extractErrorDetails(md);
+    const failingSourceLine = extractFailingSourceLine(md);
+    const enrichedError = [t.error, errorDetails, failingSourceLine ? `Failing source line: ${failingSourceLine}` : '']
+      .filter(Boolean)
+      .join('\n');
+    return {
       test_case_id: t.test_case_id,
-      error: t.error,
+      error: enrichedError,
       stack: t.stack,
       currentUrl: guessCurrentUrl(t.error) || guessCurrentUrl(t.stack),
       pageTitle: '',
       attachments: t._attachments,
-    }));
+      _pageSnapshot: extractPageSnapshot(md),
+    };
+  }
+
+  for (const [scriptPath, scriptFailures] of failuresByScript) {
+    log(`[HEAL] ${scriptPath}: capturing diagnostics for ${scriptFailures.length} failing test(s)`);
+    const initialFailures = scriptFailures.map(enrichFailure);
     const originalTestCaseIds = new Set(initialFailures.map((f) => f.test_case_id));
 
     const io = {
@@ -137,7 +189,7 @@ async function main() {
       setFileContent: (content) => fs.writeFileSync(scriptPath, content, 'utf8'),
       readPageSnapshot: async (t) => {
         log('[HEAL] Reading page snapshot from failure trace');
-        return readPageSnapshotFromAttachments(t.attachments);
+        return t._pageSnapshot || readPageSnapshotFromAttachments(t.attachments);
       },
       readScreenshotBase64: async (t) => {
         log('[HEAL] Capturing screenshot reference');
@@ -173,7 +225,9 @@ async function main() {
         runPlaywright(scriptPath, attemptPath);
         const parsed = parseResultsFile(attemptPath);
         try { fs.unlinkSync(attemptPath); } catch (e) { /* best-effort cleanup */ }
-        return parsed;
+        // Enrich here too -- a 2nd/3rd healing attempt's representative
+        // test comes from THIS return value, not from initialFailures.
+        return { tests: parsed.tests.map(enrichFailure) };
       },
     };
 
