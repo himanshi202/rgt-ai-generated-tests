@@ -14,7 +14,7 @@ const VALID_PASSWORD = process.env.VALID_PASSWORD || 'TODO_VALID_PASSWORD'; // P
 // Helper function for login, based on retrieved script
 async function login(page, username, password) {
     await page.goto(LOGIN_URL);
-    await page.getByLabel('Username').fill(username);
+    await page.getByPlaceholder('Enter your email').fill(username);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
     await expect(page).toHaveURL(DASHBOARD_URL);
@@ -40,7 +40,7 @@ async function openTemplateGenerationWizard(page) {
 test('TC-1: Verify Authenticated User Can Successfully Log In', async ({ page }) => {
     // Preconditions: User has valid credentials to log in
     await page.goto(LOGIN_URL);
-    await page.getByLabel('Username').fill(VALID_USERNAME);
+    await page.getByPlaceholder('Enter your email').fill(VALID_USERNAME);
     await page.getByLabel('Password').fill(VALID_PASSWORD);
     await page.getByRole('button', { name: 'Login' }).click();
 
