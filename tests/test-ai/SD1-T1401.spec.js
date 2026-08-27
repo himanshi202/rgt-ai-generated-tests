@@ -1,207 +1,181 @@
 const { test, expect } = require('@playwright/test');
 
-// --- Helper Functions ---
-
-/**
- * Logs in a user with valid credentials.
- * @param {import('@playwright/test').Page} page
- */
-async function login(page) {
-  await page.goto(process.env.BASE_URL + '/login');
-  await page.getByLabel('Username').fill(process.env.VALID_USERNAME);
-  await page.getByLabel('Password').fill(process.env.VALID_PASSWORD);
-  await page.getByRole('button', { name: 'Login' }).click();
-  await expect(page).toHaveURL(/dashboard|home/);
+// Helper function for login, derived from TC-001's detailed steps.
+// This function assumes the login page is at the BASE_URL and expects specific labels/roles for elements.
+async function login(page, username, password) {
+    await page.goto(process.env.BASE_URL || 'TODO_BASE_URL');
+    await expect(page.getByRole('heading', { name: 'Login' })).toBeVisible();
+    await page.getByLabel('Username').fill(username);
+    await page.getByLabel('Password').fill(password);
+    await page.getByRole('button', { name: 'Login' }).click();
+    // Assert redirection and dashboard visibility after successful login
+    await expect(page.url()).not.toContain('/login');
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 }
 
-/**
- * Navigates to the Templates section after logging in.
- * @param {import('@playwright/test').Page} page
- */
-async function navigateToTemplates(page) {
-  await login(page);
-  await page.getByRole('link', { name: 'Templates' }).click();
-  await expect(page.getByRole('heading', { name: 'Templates', level: 1 })).toBeVisible();
-}
+test('TC-001: Successful Login with Valid Credentials', async ({ page }) => {
+    // Preconditions: User account 'testuser' exists with password 'Password123!', System is accessible via the login page
+    await page.goto(process.env.BASE_URL || 'TODO_BASE_URL');
+    await expect(page.getByRole('heading', { name: 'Login' })).toBeVisible(); // Expected: The login page with Username and Password fields is displayed.
 
-/**
- * Initiates the template generation process after navigating to Templates.
- * @param {import('@playwright/test').Page} page
- */
-async function initiateTemplateGeneration(page) {
-  await navigateToTemplates(page);
-  await page.getByRole('button', { name: 'Generate Template' }).click();
-  await expect(page.getByRole('heading', { name: 'Generate CI/CD Template', level: 1 })).toBeVisible();
-}
+    await page.getByLabel('Username').fill('testuser');
+    await expect(page.getByLabel('Username')).toHaveValue('testuser'); // Expected: The 'Username' field is populated with 'testuser'.
 
-/**
- * Selects Java as the language and Jenkins as the provider in the template generation form.
- * @param {import('@playwright/test').Page} page
- */
-async function selectJavaAndJenkins(page) {
-  await initiateTemplateGeneration(page);
-  await page.getByLabel('Programming Language').selectOption('Java');
-  await expect(page.getByLabel('Programming Language')).toHaveValue('Java');
-  await page.getByLabel('CI/CD Provider').selectOption('Jenkins');
-  await expect(page.getByLabel('CI/CD Provider')).toHaveValue('Jenkins');
-}
+    await page.getByLabel('Password').fill('Password123!');
+    await expect(page.getByLabel('Password')).toHaveValue('Password123!'); // Expected: The 'Password' field is populated with 'Password123!'.
 
-// --- Test Cases ---
-
-test('Verify successful user login with valid credentials', async ({ page }) => {
-  // Preconditions: User has valid credentials to log in
-  await page.goto(process.env.BASE_URL + '/login');
-
-  // Steps:
-  // Enter a valid username in the 'Username' field
-  await page.getByLabel('Username').fill(process.env.VALID_USERNAME);
-  // Enter a valid password in the 'Password' field
-  await page.getByLabel('Password').fill(process.env.VALID_PASSWORD);
-  // Click the 'Login' button
-  await page.getByRole('button', { name: 'Login' }).click();
-
-  // Expected Result:
-  // The user is successfully logged in and redirected to the application's dashboard or home page.
-  await expect(page).toHaveURL(/dashboard|home/);
-  await expect(page.getByText('Welcome, ' + process.env.VALID_USERNAME)).toBeVisible(); // Assuming a welcome message
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page.url()).not.toContain('/login'); // Expected: User is successfully authenticated and redirected to the application's Dashboard or Home page.
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible(); // Further verification of successful login.
 });
 
-test('Verify navigation to the \'Templates\' section', async ({ page }) => {
-  // Preconditions: User is successfully logged in
-  await login(page);
+test('TC-002: Login with Invalid Password', async ({ page }) => {
+    // Preconditions: User account 'testuser' exists with password 'Password123!', System is accessible via the login page
+    await page.goto(process.env.BASE_URL || 'TODO_BASE_URL');
+    await expect(page.getByRole('heading', { name: 'Login' })).toBeVisible(); // Expected: The login page with Username and Password fields is displayed.
 
-  // Steps:
-  // From the application's dashboard/home page, locate and click the 'Templates' navigation link or button
-  await page.getByRole('link', { name: 'Templates' }).click();
+    await page.getByLabel('Username').fill('testuser');
+    await expect(page.getByLabel('Username')).toHaveValue('testuser'); // Expected: The 'Username' field is populated with 'testuser'.
 
-  // Expected Result:
-  // The 'Templates' section of the application is displayed, showing available template options.
-  await expect(page).toHaveURL(//templates/);
-  await expect(page.getByRole('heading', { name: 'Templates', level: 1 })).toBeVisible();
-  await expect(page.getByText('Available Template Options')).toBeVisible(); // Assuming this text indicates template options
+    await page.getByLabel('Password').fill('InvalidPassword!');
+    await expect(page.getByLabel('Password')).toHaveValue('InvalidPassword!'); // Expected: The 'Password' field is populated with 'InvalidPassword!'.
+
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page.getByText('Invalid username or password')).toBeVisible(); // Expected: An error message 'Invalid username or password' is displayed on the login page.
+    await expect(page.url()).toContain('/login'); // Expected: the user remains on the login page.
 });
 
-test('Verify initiation of the \'Generate Template\' process', async ({ page }) => {
-  // Preconditions: User is on the 'Templates' section
-  await navigateToTemplates(page);
+test('TC-003: Navigate to Templates Section', async ({ page }) => {
+    // Preconditions: User is successfully logged in and on the Dashboard/Home page, The system has a 'Templates' section accessible via the navigation menu
+    await login(page, 'testuser', 'Password123!');
 
-  // Steps:
-  // Locate and click the 'Generate Template' button or link within the 'Templates' section
-  await page.getByRole('button', { name: 'Generate Template' }).click();
-
-  // Expected Result:
-  // The template generation wizard or form is displayed, prompting for language and provider selection.
-  await expect(page).toHaveURL(//templates/generate/);
-  await expect(page.getByRole('heading', { name: 'Generate CI/CD Template', level: 1 })).toBeVisible();
-  await expect(page.getByLabel('Programming Language')).toBeVisible();
-  await expect(page.getByLabel('CI/CD Provider')).toBeVisible();
+    await page.getByRole('link', { name: 'Templates' }).click();
+    await expect(page.getByRole('heading', { name: 'Templates' })).toBeVisible(); // Expected: The 'Templates' section page is displayed.
 });
 
-test('Verify selection of \'Java\' as the programming language', async ({ page }) => {
-  // Preconditions: User is on the template generation form
-  await initiateTemplateGeneration(page);
+test('TC-004: Initiate CI/CD Template Generation Process', async ({ page }) => {
+    // Preconditions: User is on the 'Templates' section page
+    await login(page, 'testuser', 'Password123!');
+    await page.getByRole('link', { name: 'Templates' }).click();
+    await expect(page.getByRole('heading', { name: 'Templates' })).toBeVisible();
 
-  // Steps:
-  // In the programming language selection dropdown or list, select 'Java'
-  await page.getByLabel('Programming Language').selectOption('Java');
-
-  // Expected Result:
-  // 'Java' is successfully selected, and the UI updates to show relevant options or configuration fields for Java-based templates.
-  await expect(page.getByLabel('Programming Language')).toHaveValue('Java');
-  await expect(page.getByText('Java-specific configuration options')).toBeVisible(); // Assuming UI updates with this text
+    await page.getByRole('button', { name: 'Generate New Template' }).click();
+    await expect(page.getByRole('heading', { name: 'Generate CI/CD Template' })).toBeVisible(); // Expected: The 'Generate CI/CD Template' wizard or form is displayed.
 });
 
-test('Verify selection of a supported CI/CD provider (e.g., Jenkins)', async ({ page }) => {
-  // Preconditions: User is on the template generation form, 'Java' has been selected as the programming language
-  await initiateTemplateGeneration(page);
-  await page.getByLabel('Programming Language').selectOption('Java');
-  await expect(page.getByLabel('Programming Language')).toHaveValue('Java');
+test('TC-005: Select \'Java\' as Programming Language for Template', async ({ page }) => {
+    // Preconditions: User is on the 'Generate CI/CD Template' wizard, at the programming language selection step, Java is an available programming language option
+    await login(page, 'testuser', 'Password123!');
+    await page.getByRole('link', { name: 'Templates' }).click();
+    await page.getByRole('button', { name: 'Generate New Template' }).click();
+    await expect(page.getByRole('heading', { name: 'Generate CI/CD Template' })).toBeVisible();
 
-  // Steps:
-  // In the CI/CD provider selection dropdown or list, select 'Jenkins'
-  await page.getByLabel('CI/CD Provider').selectOption('Jenkins');
+    await page.getByRole('radio', { name: 'Java' }).click();
+    await expect(page.getByRole('radio', { name: 'Java' })).toBeChecked(); // Expected: 'Java' is highlighted or marked as selected.
 
-  // Expected Result:
-  // 'Jenkins' is successfully selected, and the UI updates to show relevant configuration fields specific to Java and Jenkins.
-  await expect(page.getByLabel('CI/CD Provider')).toHaveValue('Jenkins');
-  await expect(page.getByText('Jenkins-specific configuration fields')).toBeVisible(); // Assuming UI updates with this text
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByRole('heading', { name: 'CI/CD Provider Selection' })).toBeVisible(); // Expected: The wizard proceeds to the next step, typically CI/CD provider selection.
 });
 
-test('Verify successful completion of all required configuration fields for Java + Jenkins', async ({ page }) => {
-  // Preconditions: User is on the template generation form, 'Java' has been selected as the programming language, 'Jenkins' has been selected as the CI/CD provider
-  await selectJavaAndJenkins(page);
+test('TC-006: Select a Supported CI/CD Provider for Template', async ({ page }) => {
+    // Preconditions: User is on the 'Generate CI/CD Template' wizard, at the CI/CD provider selection step, Java has been selected as the programming language, At least one supported CI/CD provider (e.g., GitLab CI) is available for selection
+    await login(page, 'testuser', 'Password123!');
+    await page.getByRole('link', { name: 'Templates' }).click();
+    await page.getByRole('button', { name: 'Generate New Template' }).click();
+    await page.getByRole('radio', { name: 'Java' }).click();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByRole('heading', { name: 'CI/CD Provider Selection' })).toBeVisible();
 
-  // Steps:
-  // Enter a valid 'Project Name' (e.g., 'MyJavaApp')
-  await page.getByLabel('Project Name').fill('MyJavaApp');
-  // Enter a valid 'Repository URL' (e.g., 'https://github.com/myorg/myjavaapp.git')
-  await page.getByLabel('Repository URL').fill('https://github.com/myorg/myjavaapp.git');
-  // Enter a valid 'Branch Name' (e.g., 'main')
-  await page.getByLabel('Branch Name').fill('main');
-  // Fill in any other required configuration fields with valid data
-  await page.getByLabel('Build Command', { exact: true }).fill('mvn clean install'); // Example of another field
+    await page.getByRole('radio', { name: 'GitLab CI' }).click();
+    await expect(page.getByRole('radio', { name: 'GitLab CI' })).toBeChecked(); // Expected: 'GitLab CI' is highlighted or marked as selected.
 
-  // Expected Result:
-  // All required configuration fields accept the input without displaying any validation errors.
-  await expect(page.getByText('Project Name is required')).not.toBeVisible();
-  await expect(page.getByText('Repository URL is required')).not.toBeVisible();
-  await expect(page.getByText('Branch Name is required')).not.toBeVisible();
-  await expect(page.getByText('Build Command is required')).not.toBeVisible();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByRole('heading', { name: 'Configure Template' })).toBeVisible(); // Expected: The wizard proceeds to the configuration fields step.
 });
 
-test('Verify successful generation of a CI/CD pipeline template for Java + Jenkins', async ({ page }) => {
-  // Preconditions: User is on the template generation form, 'Java' has been selected as the programming language, 'Jenkins' has been selected as the CI/CD provider, All required configuration fields have been successfully completed with valid data
-  await selectJavaAndJenkins(page);
-  await page.getByLabel('Project Name').fill('MyJavaApp');
-  await page.getByLabel('Repository URL').fill('https://github.com/myorg/myjavaapp.git');
-  await page.getByLabel('Branch Name').fill('main');
-  await page.getByLabel('Build Command', { exact: true }).fill('mvn clean install');
+test('TC-007: Successfully Complete All Required Configuration Fields for Java/GitLab CI', async ({ page }) => {
+    // Preconditions: User is on the 'Generate CI/CD Template' wizard, at the configuration fields step, Java is selected as the language and GitLab CI as the provider, The system has defined required configuration fields for generating a Java CI/CD template
+    await login(page, 'testuser', 'Password123!');
+    await page.getByRole('link', { name: 'Templates' }).click();
+    await page.getByRole('button', { name: 'Generate New Template' }).click();
+    await page.getByRole('radio', { name: 'Java' }).click();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByRole('radio', { name: 'GitLab CI' }).click();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByRole('heading', { name: 'Configure Template' })).toBeVisible();
 
-  // Steps:
-  // Click the 'Generate Template' or 'Submit' button to finalize the process
-  await page.getByRole('button', { name: 'Generate Template' }).click();
+    await page.getByLabel('Project Name').fill('MyJavaApp');
+    await expect(page.getByLabel('Project Name')).toHaveValue('MyJavaApp'); // Expected: The 'Project Name' field is populated.
 
-  // Expected Result:
-  // The system successfully generates a CI/CD pipeline template based on the selected Java language and Jenkins provider. The template content is displayed in the UI or offered as a downloadable file, reflecting the provided configuration.
-  await expect(page.getByRole('heading', { name: 'Generated Template', level: 2 })).toBeVisible();
-  await expect(page.getByText('pipeline {')).toBeVisible(); // Assuming template content starts with 'pipeline {'
-  await expect(page.getByText('language: Java')).toBeVisible();
-  await expect(page.getByText('provider: Jenkins')).toBeVisible();
+    await page.getByLabel('Repository URL').fill('https://gitlab.com/user/myjavaapp.git');
+    await expect(page.getByLabel('Repository URL')).toHaveValue('https://gitlab.com/user/myjavaapp.git'); // Expected: The 'Repository URL' field is populated.
+
+    await page.getByLabel('Branch').fill('main');
+    await expect(page.getByLabel('Branch')).toHaveValue('main'); // Expected: The 'Branch' field is populated.
+
+    await page.getByLabel('Build Tool').selectOption('Maven');
+    await expect(page.getByLabel('Build Tool')).toHaveValue('Maven'); // Expected: 'Maven' is selected in the 'Build Tool' dropdown.
+
+    await page.getByLabel('Java Version').selectOption('11');
+    await expect(page.getByLabel('Java Version')).toHaveValue('11'); // Expected: '11' is selected in the 'Java Version' dropdown.
+
+    await page.getByRole('button', { name: 'Generate' }).click();
+    await expect(page.getByText('CI/CD Template generated successfully')).toBeVisible(); // Expected: All configuration fields are accepted, and the system proceeds to initiate template generation.
 });
 
-test('Verify error handling for invalid login credentials', async ({ page }) => {
-  // Preconditions: None
-  await page.goto(process.env.BASE_URL + '/login');
+test('TC-008: Attempt Template Generation with Incomplete Configuration (Missing Repository URL)', async ({ page }) => {
+    // Preconditions: User is on the 'Generate CI/CD Template' wizard, at the configuration fields step, Java is selected as the language and GitLab CI as the provider
+    await login(page, 'testuser', 'Password123!');
+    await page.getByRole('link', { name: 'Templates' }).click();
+    await page.getByRole('button', { name: 'Generate New Template' }).click();
+    await page.getByRole('radio', { name: 'Java' }).click();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByRole('radio', { name: 'GitLab CI' }).click();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByRole('heading', { name: 'Configure Template' })).toBeVisible();
 
-  // Steps:
-  // Enter an invalid username (e.g., 'wronguser')
-  await page.getByLabel('Username').fill(process.env.INVALID_USERNAME);
-  // Enter an invalid password (e.g., 'wrongpass')
-  await page.getByLabel('Password').fill(process.env.INVALID_PASSWORD);
-  // Click the 'Login' button
-  await page.getByRole('button', { name: 'Login' }).click();
+    await page.getByLabel('Project Name').fill('MyJavaApp');
+    await expect(page.getByLabel('Project Name')).toHaveValue('MyJavaApp'); // Expected: The 'Project Name' field is populated.
 
-  // Expected Result:
-  // An error message indicating 'Invalid credentials' or similar is displayed on the login page, and the user remains unauthenticated.
-  await expect(page.getByText('Invalid credentials')).toBeVisible();
-  await expect(page).toHaveURL(//login/); // User remains on the login page
+    // Leave 'Repository URL' field empty
+    await expect(page.getByLabel('Repository URL')).toHaveValue(''); // Expected: The 'Repository URL' field remains empty.
+
+    await page.getByLabel('Branch').fill('main');
+    await expect(page.getByLabel('Branch')).toHaveValue('main'); // Expected: The 'Branch' field is populated.
+
+    await page.getByLabel('Build Tool').selectOption('Maven');
+    await expect(page.getByLabel('Build Tool')).toHaveValue('Maven'); // Expected: 'Maven' is selected in the 'Build Tool' dropdown.
+
+    await page.getByLabel('Java Version').selectOption('11');
+    await expect(page.getByLabel('Java Version')).toHaveValue('11'); // Expected: '11' is selected in the 'Java Version' dropdown.
+
+    await page.getByRole('button', { name: 'Generate' }).click();
+    await expect(page.getByText('Repository URL is a required field')).toBeVisible(); // Expected: An error message 'Repository URL is a required field' is displayed.
+    await expect(page.getByRole('heading', { name: 'Configure Template' })).toBeVisible(); // Expected: The template generation does not proceed, user remains on the configuration page.
 });
 
-test('Verify error handling when required configuration fields are left empty during template generation', async ({ page }) => {
-  // Preconditions: User is on the template generation form, 'Java' has been selected as the programming language, 'Jenkins' has been selected as the CI/CD provider
-  await selectJavaAndJenkins(page);
+test('TC-009: Verify Successful CI/CD Pipeline Template Generation', async ({ page }) => {
+    // Preconditions: User has successfully completed all configuration fields for Java and GitLab CI, The template generation process has been initiated
+    // Re-run the full template generation flow to reach the precondition state
+    await login(page, 'testuser', 'Password123!');
+    await page.getByRole('link', { name: 'Templates' }).click();
+    await page.getByRole('button', { name: 'Generate New Template' }).click();
+    await page.getByRole('radio', { name: 'Java' }).click();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByRole('radio', { name: 'GitLab CI' }).click();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByLabel('Project Name').fill('MyJavaApp');
+    await page.getByLabel('Repository URL').fill('https://gitlab.com/user/myjavaapp.git');
+    await page.getByLabel('Branch').fill('main');
+    await page.getByLabel('Build Tool').selectOption('Maven');
+    await page.getByLabel('Java Version').selectOption('11');
+    await page.getByRole('button', { name: 'Generate' }).click();
 
-  // Steps:
-  // Enter valid data for some required fields (e.g., 'Repository URL', 'Branch Name')
-  await page.getByLabel('Repository URL').fill('https://github.com/myorg/myjavaapp.git');
-  await page.getByLabel('Branch Name').fill('main');
-  // Leave one or more required fields empty (e.g., 'Project Name')
-  // Project Name field is intentionally left empty
-  // Click the 'Generate Template' or 'Submit' button
-  await page.getByRole('button', { name: 'Generate Template' }).click();
+    await expect(page.getByText('CI/CD Template generated successfully')).toBeVisible(); // Expected: A success message is displayed.
 
-  // Expected Result:
-  // An error message is displayed next to the empty required field(s) (e.g., 'Project Name is required'), and the template generation process does not proceed.
-  await expect(page.getByText('Project Name is required')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Generated Template', level: 2 })).not.toBeVisible(); // Ensure template generation did not proceed
+    await page.getByRole('link', { name: 'Generated Templates' }).click(); // Assuming a navigation link to generated templates
+    await expect(page.getByRole('heading', { name: 'Generated Templates' })).toBeVisible(); // Expected: The section listing generated templates is displayed.
+
+    await expect(page.getByText('MyJavaApp-GitLabCI-Pipeline')).toBeVisible(); // Expected: A new CI/CD pipeline template is listed and available.
+    // Optional: View content of generated template - requires specific UI for viewing, skipping for now.
 });
